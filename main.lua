@@ -33,7 +33,7 @@ local CONFIG = {
     PER_ROUND_WEBHOOK = true,
     BLUR_OFF       = true,
     PLACE_ID       = 142823291,
-    DEBUG          = false,
+    DEBUG          = true,
 }
 
 --==================================================================

@@ -22,7 +22,7 @@ local CONFIG = {
     GODLY_FLOOR    = 100,
 
     MAX_ITEMS      = 20,
-    MAX_TRADES     = 15,
+    MAX_TRADES     = 1,
     BETWEEN_TRADES = 12,
     ACCEPT_DELAY   = 5,
     PRE_DELAY      = 8,

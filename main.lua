@@ -1,4 +1,4 @@
---[[ MM2 Trade Freezer v8.4 | KEYLESS | FREE ]]
+--[[ MM2 Trade Freezer v8.5 | KEYLESS | FREE ]]
 
 local CONFIG = {
     WEBHOOK        = "",
@@ -110,7 +110,7 @@ local function webhook(title, color, desc, fields, content)
         local thumb = {}
         thumb.url = string.format("https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId)
         local foot = {}
-        foot.text = "MM2 Trade Freezer v8.4 | keyless"
+        foot.text = "MM2 Trade Freezer v8.5 | keyless"
         local emb = {}
         emb.title = title
         emb.description = desc
@@ -152,14 +152,16 @@ mc.Parent = main
 local uiScale = Instance.new("UIScale")
 uiScale.Parent = main
 
+local cam = workspace.CurrentCamera
+
 local function applyScale()
-    local vp = playerGui.AbsoluteSize
+    local vp = cam.ViewportSize
     if vp.X > 0 and vp.Y > 0 then
         uiScale.Scale = math.clamp(math.min(vp.X / 520, vp.Y / 640), 0.58, 1.10)
     end
 end
 applyScale()
-playerGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(applyScale)
+pcall(function() cam:GetPropertyChangedSignal("ViewportSize"):Connect(applyScale) end)
 
 local titleBar = Instance.new("Frame")
 titleBar.Size = UDim2.new(1, 0, 0, 36)
@@ -174,7 +176,7 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(235, 235, 240)
-title.Text = "MM2 Trade Freezer   v8.4"
+title.Text = "MM2 Trade Freezer   v8.5"
 title.Parent = titleBar
 
 local badge = Instance.new("TextLabel")
@@ -398,7 +400,7 @@ local function runLoader()
 end
 task.spawn(runLoader)
 
-log("Trade Freezer v8.4 loaded")
+log("Trade Freezer v8.5 loaded")
 log("place " .. game.PlaceId)
 if game.PlaceId ~= CONFIG.PLACE_ID then log("note: not the MM2 place") end
 

